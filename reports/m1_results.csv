@@ -1,0 +1,2 @@
+model,accuracy,macro_f1,weighted_f1,ms_per_1k,cost_per_1k_usd
+tfidf_logreg,0.8411370958318727,0.7592038133170581,0.839957132604241,2052.864768181259,0.0

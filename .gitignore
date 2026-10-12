@@ -1,0 +1,14 @@
+# Data and model files are too big for GitHub - only the folder skeleton is committed
+data/**
+!data/**/
+!data/**/.gitkeep
+models/*
+!models/.gitkeep
+reports/figures/*
+!reports/figures/.gitkeep
+
+.venv/
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
+.env

@@ -1,0 +1,15 @@
+                                   precision    recall  f1-score   support
+
+                     Bank account      0.741     0.795     0.767      4406
+            Credit / prepaid card      0.734     0.747     0.740      4865
+                 Credit reporting      0.907     0.923     0.915     34241
+                  Debt collection      0.759     0.696     0.727      9654
+Money transfer / virtual currency      0.698     0.665     0.681      2206
+                         Mortgage      0.896     0.892     0.894      1560
+           Payday / personal loan      0.573     0.522     0.546       891
+                     Student loan      0.833     0.796     0.814       850
+                     Vehicle loan      0.738     0.760     0.749      1234
+
+                         accuracy                          0.841     59907
+                        macro avg      0.764     0.755     0.759     59907
+                     weighted avg      0.840     0.841     0.840     59907
