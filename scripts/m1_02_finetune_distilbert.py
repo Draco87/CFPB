@@ -14,6 +14,7 @@ Writes to --out-dir:  best/ (model + tokenizer), test_preds.parquet, val/test re
 and, when run inside the project, adds a row to reports/m1_results.csv.
 """
 import argparse
+import inspect
 import json
 import math
 import time
@@ -99,7 +100,7 @@ def main():
 
     n_dev = max(1, torch.cuda.device_count())
     total_steps = math.ceil(len(train_ds) / (args.bs * n_dev)) * args.epochs
-    targs = TrainingArguments(
+    base = dict(
         output_dir=str(args.out_dir / "checkpoints"),
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.bs,
@@ -114,11 +115,24 @@ def main():
         metric_for_best_model="macro_f1",
         greater_is_better=True,
         fp16=torch.cuda.is_available(),
-        group_by_length=True,          # batches similar lengths together -> much faster
         logging_steps=200,
         report_to="none",
         seed=SEED,
     )
+    # Batch complaints of similar length together (much less padding -> faster).
+    # transformers v4: group_by_length=True | v5: train_sampling_strategy="group_by_length"
+    params = inspect.signature(TrainingArguments.__init__).parameters
+    if "train_sampling_strategy" in params:
+        grouping = {"train_sampling_strategy": "group_by_length"}
+    elif "group_by_length" in params:
+        grouping = {"group_by_length": True}
+    else:
+        grouping = {}
+    try:
+        targs = TrainingArguments(**base, **grouping)
+    except (TypeError, ValueError) as e:
+        print(f"Length grouping not available ({e}) - training without it (slower, same result).")
+        targs = TrainingArguments(**base)
     trainer = Trainer(model=model, args=targs, train_dataset=train_ds, eval_dataset=val_ds,
                       data_collator=DataCollatorWithPadding(tok), compute_metrics=compute_metrics)
 

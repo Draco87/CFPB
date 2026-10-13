@@ -29,6 +29,22 @@ def tune_alpha(proba, y_true, classes, train_prior, target_prior):
     return max(scores, key=scores.get), scores
 
 
+def em_prior(proba, train_prior, iters=200, tol=1e-6):
+    """Estimate the class mix of NEW, UNLABELLED data from the model's probabilities
+    (Saerens, Latinne & Decaestecker, 2002). Uses no labels, so it is legitimate
+    in production: you always have this month's incoming complaints, never their labels."""
+    train_prior = np.asarray(train_prior)
+    p = train_prior.copy()
+    for _ in range(iters):
+        adj = proba * (p / train_prior)
+        adj /= adj.sum(1, keepdims=True)
+        new = adj.mean(0)
+        if np.abs(new - p).max() < tol:
+            return new
+        p = new
+    return p
+
+
 def append_result(row: dict, path):
     """Add/replace one model's row in the results table."""
     old = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["model"])

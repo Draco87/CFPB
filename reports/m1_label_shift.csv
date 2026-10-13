@@ -1,0 +1,5 @@
+prior used,macro_f1,accuracy,DebtColl recall,MoneyTr precision
+none,0.7009,0.8214,0.7215,0.6325
+val prior,0.7442,0.8757,0.5861,0.5816
+EM prior (no labels),0.7506,0.8754,0.6254,0.6738
+oracle (true test mix),0.7517,0.8752,0.6317,0.681

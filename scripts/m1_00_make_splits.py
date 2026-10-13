@@ -26,6 +26,7 @@ META_COLS = ["complaint_id", "date", "product", "n_chars"]
 KEEP_COLS = ["complaint_id", "date", "product", "sub_product", "issue", "company", "text", "n_chars"]
 OUT = {s: config.PROCESSED / f"m1_{s}.parquet" for s in ("train", "val", "test")}
 META_FILE = config.PROCESSED / "m1_splits_meta.json"
+EVAL_VERSION = "natural-v1"   # val/test = random sample of each period, proportional to volume
 
 
 def main():
@@ -54,7 +55,11 @@ def main():
         tr_ids = tr.sample(min(args.train_n, len(tr)), random_state=seed)
     ids = {"train": set(tr_ids["complaint_id"])}
 
-    if OUT["val"].exists() and OUT["test"].exists() and not args.force:
+    old_meta = json.loads(META_FILE.read_text()) if META_FILE.exists() else {}
+    frozen_ok = old_meta.get("eval_version") == EVAL_VERSION
+    if OUT["val"].exists() and OUT["test"].exists() and not frozen_ok:
+        print("Existing val/test were not built by this script -> rebuilding them.")
+    if OUT["val"].exists() and OUT["test"].exists() and frozen_ok and not args.force:
         print("Keeping existing (frozen) val/test sets.")
         for s in ("val", "test"):
             ids[s] = set(pd.read_parquet(OUT[s], columns=["complaint_id"])["complaint_id"])
@@ -77,7 +82,8 @@ def main():
         df[df["split"] == s].drop(columns="split").reset_index(drop=True).to_parquet(OUT[s], index=False)
 
     META_FILE.write_text(json.dumps({"train_mode": args.train_mode, "train_cap": args.train_cap,
-                                     "train_n": args.train_n, "seed": seed}, indent=2))
+                                     "train_n": args.train_n, "seed": seed,
+                                     "eval_version": EVAL_VERSION}, indent=2))
 
     counts = pd.DataFrame({s: pd.read_parquet(OUT[s], columns=["product"])["product"].value_counts()
                            for s in OUT}).fillna(0).astype(int)
