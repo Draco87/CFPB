@@ -1,0 +1,5 @@
+model,prior,macro_f1,ci95_low,ci95_high,accuracy
+tfidf_logreg,val prior,0.7442,0.7362,0.7524,0.8757
+tfidf_logreg,EM prior,0.7506,0.7427,0.7587,0.8754
+distilbert,val prior,0.7569,0.7489,0.7644,0.8758
+distilbert,EM prior,0.7557,0.7479,0.7629,0.8741

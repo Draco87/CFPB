@@ -3,15 +3,14 @@ Module 1, Step 3: fine-tune DistilBERT on the same frozen splits as the baseline
 
 Needs an NVIDIA GPU (CPU only for a smoke test with --limit 1000).
 
-Local (inside the project):
-    uv run python scripts/m1_02_finetune_distilbert.py
+Train + evaluate (Kaggle):
+    !python m1_02_finetune_distilbert.py --data-dir /kaggle/input/<dataset> --out-dir /kaggle/working/m1_distilbert
 
-Kaggle (free GPU) - this file is self-contained, it does not import `cfpb`:
-    !python m1_02_finetune_distilbert.py --data-dir /kaggle/input/<your-dataset> \
-            --out-dir /kaggle/working/m1_distilbert
+Evaluate an ALREADY TRAINED model (no retraining, ~5 min):
+    !python m1_02_finetune_distilbert.py --data-dir ... --out-dir ... --predict-only --model-dir <folder with the saved model>
 
-Writes to --out-dir:  best/ (model + tokenizer), test_preds.parquet, val/test reports, results.json
-and, when run inside the project, adds a row to reports/m1_results.csv.
+Self-contained (does not import `cfpb`), so Kaggle needs only this file.
+Writes to --out-dir: best/ (model + tokenizer), test_preds.parquet, val/test reports, results.json
 """
 import argparse
 import inspect
@@ -54,41 +53,29 @@ def softmax(x):
     return e / e.sum(1, keepdims=True)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", type=Path, default=ROOT / "data" / "processed")
-    ap.add_argument("--out-dir", type=Path, default=ROOT / "models" / "m1_distilbert")
-    ap.add_argument("--model", default="distilbert-base-uncased")
-    ap.add_argument("--max-len", type=int, default=256)
-    ap.add_argument("--epochs", type=float, default=2)
-    ap.add_argument("--bs", type=int, default=32)
-    ap.add_argument("--lr", type=float, default=5e-5)
-    ap.add_argument("--limit", type=int, default=0, help="smoke test: use only N rows per split")
-    args = ap.parse_args()
-    set_seed(SEED)
-    args.out_dir.mkdir(parents=True, exist_ok=True)
+@torch.no_grad()
+def predict_logits(model, ds, tok, bs, device):
+    """Order-safe inference: row i of the output belongs to row i of `ds`.
+    (Trainer.predict can reorder rows when length-grouping is switched on -
+    that bug made the first run's scores look random.)
+    Rows are processed shortest-first for speed, then put back in the original order."""
+    model.eval()
+    ids, masks = list(ds["input_ids"]), list(ds["attention_mask"])
+    order = np.argsort([len(x) for x in ids], kind="stable")
+    out = np.zeros((len(ids), model.config.num_labels), dtype=np.float32)
+    for s in range(0, len(order), bs):
+        idx = order[s:s + bs]
+        batch = tok.pad({"input_ids": [ids[i] for i in idx], "attention_mask": [masks[i] for i in idx]},
+                        return_tensors="pt")
+        batch = {k: v.to(device) for k, v in batch.items()}
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
+            logits = model(**batch).logits
+        out[idx] = logits.float().cpu().numpy()
+    return out
 
-    train, val, test = (pd.read_parquet(args.data_dir / f"m1_{s}.parquet") for s in ("train", "val", "test"))
-    if args.limit:
-        train, val, test = (d.sample(min(args.limit, len(d)), random_state=SEED) for d in (train, val, test))
-    meta_file = args.data_dir / "m1_splits_meta.json"
-    mode = json.loads(meta_file.read_text())["train_mode"] if meta_file.exists() else "unknown"
-    name = f"distilbert[{mode}]"
-    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
-    print(f"{name} on {gpu}: train {len(train):,} | val {len(val):,} | test {len(test):,}")
 
-    classes = np.array(sorted(train["product"].unique()))
+def train_model(args, classes, tok, train_ds, val_ds):
     label2id = {c: i for i, c in enumerate(classes)}
-    tok = AutoTokenizer.from_pretrained(args.model)
-
-    def to_ds(d):
-        ds = Dataset.from_pandas(pd.DataFrame({"text": d["text"].to_numpy(),
-                                               "label": d["product"].map(label2id).to_numpy()}))
-        return ds.map(lambda b: tok(b["text"], truncation=True, max_length=args.max_len),
-                      batched=True, remove_columns=["text"])
-
-    train_ds, val_ds, test_ds = to_ds(train), to_ds(val), to_ds(test)
-
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model, num_labels=len(classes),
         id2label={i: c for c, i in label2id.items()}, label2id=label2id)
@@ -119,7 +106,7 @@ def main():
         report_to="none",
         seed=SEED,
     )
-    # Batch complaints of similar length together (much less padding -> faster).
+    # Batch complaints of similar length together during TRAINING (less padding -> faster).
     # transformers v4: group_by_length=True | v5: train_sampling_strategy="group_by_length"
     params = inspect.signature(TrainingArguments.__init__).parameters
     if "train_sampling_strategy" in params:
@@ -133,28 +120,92 @@ def main():
     except (TypeError, ValueError) as e:
         print(f"Length grouping not available ({e}) - training without it (slower, same result).")
         targs = TrainingArguments(**base)
+
     trainer = Trainer(model=model, args=targs, train_dataset=train_ds, eval_dataset=val_ds,
                       data_collator=DataCollatorWithPadding(tok), compute_metrics=compute_metrics)
-
     t0 = time.time()
     trainer.train()
     train_min = (time.time() - t0) / 60
     trainer.save_model(str(args.out_dir / "best"))
     tok.save_pretrained(str(args.out_dir / "best"))
+    for log in trainer.state.log_history:
+        if "eval_macro_f1" in log:
+            print(f"  epoch {log.get('epoch', '?')}: val macro-F1 {log['eval_macro_f1']:.4f}")
+    return trainer.model, train_min, trainer.state.best_metric
 
-    # Prior-shift alpha tuned on VAL (train is capped/balanced, val/test have the real mix)
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data-dir", type=Path, default=ROOT / "data" / "processed")
+    ap.add_argument("--out-dir", type=Path, default=ROOT / "models" / "m1_distilbert")
+    ap.add_argument("--model", default="distilbert-base-uncased")
+    ap.add_argument("--max-len", type=int, default=256)
+    ap.add_argument("--epochs", type=float, default=2)
+    ap.add_argument("--bs", type=int, default=32)
+    ap.add_argument("--lr", type=float, default=5e-5)
+    ap.add_argument("--limit", type=int, default=0, help="smoke test: use only N rows per split")
+    ap.add_argument("--predict-only", action="store_true", help="skip training, evaluate a saved model")
+    ap.add_argument("--model-dir", type=Path, default=None, help="saved model (default: <out-dir>/best)")
+    args = ap.parse_args()
+    set_seed(SEED)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    model_dir = args.model_dir or args.out_dir / "best"
+
+    train, val, test = (pd.read_parquet(args.data_dir / f"m1_{s}.parquet") for s in ("train", "val", "test"))
+    if args.limit:
+        train, val, test = (d.sample(min(args.limit, len(d)), random_state=SEED) for d in (train, val, test))
+    meta_file = args.data_dir / "m1_splits_meta.json"
+    mode = json.loads(meta_file.read_text())["train_mode"] if meta_file.exists() else "unknown"
+    name = f"distilbert[{mode}]"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gpu = torch.cuda.get_device_name(0) if device.type == "cuda" else "cpu"
+    print(f"{name} on {gpu}: train {len(train):,} | val {len(val):,} | test {len(test):,}")
+
+    if args.predict_only:
+        print(f"Loading trained model from {model_dir}")
+        model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+        tok = AutoTokenizer.from_pretrained(model_dir)
+        classes = np.array([model.config.id2label[i] for i in range(model.config.num_labels)])
+    else:
+        classes = np.array(sorted(train["product"].unique()))
+        tok = AutoTokenizer.from_pretrained(args.model)
+    label2id = {c: i for i, c in enumerate(classes)}
+
+    def to_ds(d):
+        ds = Dataset.from_pandas(pd.DataFrame({"text": d["text"].to_numpy(),
+                                               "label": d["product"].map(label2id).to_numpy()}))
+        return ds.map(lambda b: tok(b["text"], truncation=True, max_length=args.max_len),
+                      batched=True, remove_columns=["text"])
+
+    val_ds, test_ds = to_ds(val), to_ds(test)
+    train_min, best_metric = None, None
+    if not args.predict_only:
+        model, train_min, best_metric = train_model(args, classes, tok, to_ds(train), val_ds)
+    model.to(device)
+
+    # --- VAL: sanity check, then tune the prior-shift alpha
+    val_logits = predict_logits(model, val_ds, tok, args.bs * 2, device)
+    val_raw = f1_score(val["product"], classes[val_logits.argmax(1)], average="macro")
+    print(f"VAL macro-F1, no prior adjustment: {val_raw:.4f}")
+    if best_metric is not None:
+        print(f"    Trainer's own val macro-F1:    {best_metric:.4f}")
+        if abs(val_raw - best_metric) > 0.01:
+            print("    WARNING: these should match - predictions may be misaligned with labels!")
+
     train_prior = class_prior(train["product"], classes)
     target_prior = class_prior(val["product"], classes)
-    val_proba = softmax(trainer.predict(val_ds).predictions)
+    val_proba = softmax(val_logits)
     alpha, scores = tune_alpha(val_proba, val["product"].to_numpy(), classes, train_prior, target_prior)
     print("VAL macro-F1 by alpha:", {a: round(s, 4) for a, s in scores.items()}, f"-> alpha={alpha}")
     val_pred = classes[prior_adjust(val_proba, train_prior, target_prior, alpha).argmax(1)]
     (args.out_dir / "val_report.txt").write_text(
         classification_report(val["product"], val_pred, digits=3, zero_division=0))
 
+    # --- TEST: touched once
     t0 = time.time()
-    test_proba = softmax(trainer.predict(test_ds).predictions)
+    test_logits = predict_logits(model, test_ds, tok, args.bs * 2, device)
     ms_per_1k = (time.time() - t0) / len(test) * 1e6
+    test_proba = softmax(test_logits)
     pred = classes[prior_adjust(test_proba, train_prior, target_prior, alpha).argmax(1)]
 
     row = {"model": name, "train_rows": len(train),
@@ -162,7 +213,8 @@ def main():
            "macro_f1": f1_score(test["product"], pred, average="macro"),
            "weighted_f1": f1_score(test["product"], pred, average="weighted"),
            "prior_alpha": alpha, "ms_per_1k": ms_per_1k, "hardware": gpu,
-           "train_minutes": round(train_min, 1), "cost_per_1k_usd": 0.0}
+           "train_minutes": None if train_min is None else round(train_min, 1),
+           "cost_per_1k_usd": 0.0}
     print("TEST", {k: round(v, 4) if isinstance(v, float) else v for k, v in row.items()})
     report = classification_report(test["product"], pred, digits=3, zero_division=0)
     (args.out_dir / "test_report.txt").write_text(report)
