@@ -1,0 +1,7 @@
+model,macro_f1,ci95_low,ci95_high,accuracy,ms_per_complaint
+distilbert (no prior adj),0.8176,0.7912,0.8401,0.8178,1.2966
+tfidf_logreg (no prior adj),0.7828,0.7568,0.8096,0.7811,1.6493
+distilbert (as deployed),0.758,0.7306,0.7836,0.7489,1.2966
+tfidf_logreg (as deployed),0.7226,0.6941,0.7484,0.7133,1.6493
+LLM few-shot,0.6675,0.6348,0.6949,0.6644,3786.9317
+LLM zero-shot,0.6519,0.6203,0.6783,0.6456,353.8544
