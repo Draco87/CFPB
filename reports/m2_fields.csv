@@ -1,3 +1,3 @@
-field,fine-tuned accuracy,naive baseline (knows true product),best possible (seen in training)
-sub_product,0.6244,0.6856,1.0
-issue,0.4722,0.42,1.0
+field,fine-tuned,"naive, uses model's product (fair)","naive, given TRUE product",fine-tuned | product right,naive | product right
+sub_product,0.6244,0.5522,0.6856,0.7904,0.699
+issue,0.4722,0.3444,0.42,0.5795,0.4276

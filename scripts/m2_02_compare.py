@@ -83,14 +83,21 @@ def main():
     train = train[train["date"] >= "2023-01-01"].fillna("None")
     f = res["finetuned"]
     fields = []
+    ok = (ft["y_pred"] == ft["y_true"]).to_numpy()          # rows where the model got the product right
     for field in ["sub_product", "issue"]:
         top = train.groupby("product")[field].agg(lambda s: s.value_counts().index[0])
-        naive = ft["y_true"].map(top).fillna("None").to_numpy()
+        truth = ft[f"true_{field}"].to_numpy()
+        model_hit = (ft[f"pred_{field}"].to_numpy() == truth)
+        naive_true = (ft["y_true"].map(top).fillna("None").to_numpy() == truth)
+        naive_pred = (ft["y_pred"].map(top).fillna("None").to_numpy() == truth)
         fields.append({"field": field,
-                       "fine-tuned accuracy": f[f"{field}_accuracy"],
-                       "naive baseline (knows true product)": float(np.mean(naive == ft[f"true_{field}"])),
-                       "best possible (seen in training)": res["coverage"][field]})
+                       "fine-tuned": model_hit.mean(),
+                       "naive, uses model's product (fair)": naive_pred.mean(),
+                       "naive, given TRUE product": naive_true.mean(),
+                       "fine-tuned | product right": model_hit[ok].mean(),
+                       "naive | product right": naive_true[ok].mean()})
     fields = pd.DataFrame(fields)
+    print("\n'naive' = always guess the most common sub-product/issue for the product.")
     print(f"\nSTRUCTURED FIELDS (fine-tuned 1.5B) | valid JSON: {f['json_valid_rate']:.1%} | "
           f"all three fields right: {f['all_three_correct']:.1%}")
     print(fields.round(4).to_string(index=False))
