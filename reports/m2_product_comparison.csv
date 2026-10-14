@@ -1,0 +1,7 @@
+model,macro_f1,ci95_low,ci95_high,accuracy,ms_per_complaint,labels_used
+DistilBERT,0.8176,0.7912,0.8401,0.8178,1.2966,"174,088"
+Qwen 1.5B fine-tuned (LoRA),0.7899,0.7661,0.8146,0.79,232.4233,"18,000"
+TF-IDF + LogReg,0.7828,0.7568,0.8096,0.7811,,"174,088"
+Qwen 7B few-shot,0.6675,0.6348,0.6949,0.6644,3786.9317,9
+Qwen 7B zero-shot,0.6519,0.6203,0.6783,0.6456,353.8544,0
+Qwen 1.5B untrained,0.3461,0.3149,0.3746,0.3356,88.3934,0
