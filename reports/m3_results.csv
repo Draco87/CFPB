@@ -1,0 +1,5 @@
+model,pr_auc,roc_auc,capture_top10,brier,pr_auc_ci_low,pr_auc_ci_high
+1. Company track record only,0.1865,0.9501,0.8612,0.0117,0.1762,0.1973
+2. Logistic regression (details),0.2837,0.9693,0.9474,0.0111,0.2698,0.3017
+3. XGBoost (details),0.2874,0.9705,0.9508,0.0114,0.2726,0.3053
+4. XGBoost (details + text),0.2846,0.9742,0.9668,0.0115,0.2709,0.2995
