@@ -80,7 +80,8 @@ def show(c, val):
 def as_cat(df, cats_from):
     out = df[CAT + NUM + TEXT].copy()
     for c in CAT:
-        out[c] = pd.Categorical(out[c], categories=cats_from[c])
+        known = out[c].where(out[c].isin(cats_from[c]))     # values never seen in training -> missing
+        out[c] = pd.Categorical(known, categories=cats_from[c])
     return out
 
 
@@ -118,6 +119,19 @@ def main():
     X_te = as_cat(te, cats)[CAT + NUM + TEXT]
     preds["4. XGBoost (details + text)"] = xgb_full.predict_proba(X_te)[:, 1]
     xgb_full.save_model(str(config.MODELS / "m3_xgb_full.json"))
+
+    # ---- recalibration: the payout rate fell over time, so re-map the scores using the most
+    # recent labelled period (validation, H2 2024). Platt scaling = a 1-input logistic regression on
+    # the model's log-odds. It keeps the ranking (so PR-AUC is unchanged) and fixes the percentages.
+    def logit(p):
+        p = np.clip(p, 1e-6, 1 - 1e-6)
+        return np.log(p / (1 - p)).reshape(-1, 1)
+
+    p_va = xgb_full.predict_proba(as_cat(va, cats)[CAT + NUM + TEXT])[:, 1]
+    platt = LogisticRegression(C=1e6, max_iter=1000).fit(logit(p_va), y_va)
+    recal = platt.predict_proba(logit(preds["4. XGBoost (details + text)"]))[:, 1]
+    print(f"Average predicted on test: {preds['4. XGBoost (details + text)'].mean():.4f} before, "
+          f"{recal.mean():.4f} after recalibration | actual {y_te.mean():.4f}")
 
     # ---- scores + bootstrap CIs
     boot_idx = [RNG.integers(0, len(y_te), len(y_te)) for _ in range(N_BOOT)]
@@ -239,22 +253,38 @@ def main():
 
     # calibration
     s = preds[full]
-    bins = pd.qcut(s, 10, labels=False, duplicates="drop")
-    cal = pd.DataFrame({"pred": s, "y": y_te, "bin": bins}).groupby("bin").mean()
-    fig, ax = plt.subplots(figsize=(5.5, 5))
-    lim = max(cal["pred"].max(), cal["y"].max()) * 105
-    ax.plot([0, lim], [0, lim], color=MUTED, ls="--", lw=1)
-    ax.plot(cal["pred"] * 100, cal["y"] * 100, "o-", color=BLUE, lw=2, ms=6)
+
+    def cal_bins(p):
+        """Riskiest 10% split into 5 equal groups (2% each) + the other 90% as one group."""
+        order = np.argsort(-p)
+        k = len(p) // 10
+        groups = np.array_split(order[:k], 5) + [order[k:]]
+        return pd.DataFrame([{"pred": p[g].mean(), "y": y_te[g].mean()} for g in groups])
+
+    before, after = cal_bins(s), cal_bins(recal)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    lim = max(before["pred"].max(), before["y"].max(), after["pred"].max()) * 105
+    ax.plot([0, lim], [0, lim], color=MUTED, ls="--", lw=1, label="Perfect match")
+    ax.plot(before["pred"] * 100, before["y"] * 100, "o-", color=ORANGE, lw=1.6, ms=6, label="Original model")
+    ax.plot(after["pred"] * 100, after["y"] * 100, "o-", color=BLUE, lw=2, ms=6, label="Recalibrated on H2 2024")
     ax.set_xlabel("Predicted payout chance (%)")
     ax.set_ylabel("Actual payout rate (%)")
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
     ax.set_title("Do the predicted chances match reality?", loc="left", color=INK, fontsize=11)
-    worst = (cal["pred"] - cal["y"]).abs().idxmax()
     sections.append(("Can the percentages be trusted? (calibration)", [
-        "Complaints were grouped into 10 bins by predicted chance. If the dots sit on the dashed line, "
-        "'20% chance' really means about 20 in 100 get a payout.",
-        f"In the riskiest bin the model predicted {pct(cal['pred'].iloc[-1])} and the real rate was "
-        f"{pct(cal['y'].iloc[-1])}. The biggest gap is in bin {int(worst) + 1}: predicted "
-        f"{pct(cal.loc[worst, 'pred'])} vs actual {pct(cal.loc[worst, 'y'])}."], fig_html(fig), []))
+        "Each dot is a group of complaints: the riskiest 2%, the next 2%, ... down to the safest 90%. "
+        "If the dots sit on the dashed line, '20% chance' really means about 20 in 100 get a payout.",
+        (f"The original model predicts <b>too high</b>" if s.mean() > base * 1.1 else
+         f"The original model predicts <b>too low</b>" if s.mean() < base * 0.9 else
+         "The original model is <b>about right on average</b>")
+        + f": on average it predicted {pct(s.mean(), 1)} and {pct(base, 1)} actually got a payout"
+        + (" - it learned from 2023-24, when payout rates were different." if abs(s.mean() / base - 1) > 0.1 else ".")
+        + f" For the riskiest 2% it said {pct(before['pred'].iloc[0])}; the real rate was {pct(before['y'].iloc[0])}.",
+        f"<b>Recalibrating</b> on the most recent labelled months (H2 2024) - a small re-mapping that keeps "
+        f"the ranking unchanged - brings the average prediction to {pct(recal.mean(), 1)} and the riskiest 2% "
+        f"to {pct(after['pred'].iloc[0])} (actual {pct(after['y'].iloc[0])})."], fig_html(fig),
+        ["Ranking (which complaint first) and calibration (is 20% really 20%) are different things. "
+         "A model can rank well and still give wrong percentages when the world changes."]))
 
     # drift over time
     allm = pd.concat([tr.assign(w="train"), va.assign(w="val"), te.assign(w="test")])
@@ -280,13 +310,18 @@ def main():
         if mask.sum() < 50:
             continue
         grp_rows.append({"Group": name, "Complaints": n(mask.sum()), "Actual payout rate": pct(y_te[mask].mean()),
-                         "Average predicted": pct(s[mask].mean()),
+                         "Predicted (original)": pct(s[mask].mean()),
+                         "Predicted (recalibrated)": pct(recal[mask].mean()),
                          "PR-AUC": f"{average_precision_score(y_te[mask], s[mask]):.3f}" if y_te[mask].sum() else "-"})
     sections.append(("Does it work equally well for different groups? (first look)", [
         "A fair model should rank complaints about as well for tagged groups as for everyone, and its average "
         "prediction should match each group's real rate. Module 6 looks at this in depth."],
-        table_html(pd.DataFrame(grp_rows), num_cols=("Complaints", "Actual payout rate", "Average predicted", "PR-AUC")),
-        []))
+        table_html(pd.DataFrame(grp_rows), num_cols=("Complaints", "Actual payout rate", "Predicted (original)",
+                                                     "Predicted (recalibrated)", "PR-AUC")),
+        ["When a group's payout rate differs from the average, it is often because the group complains about "
+         "different products (e.g. more banking and cards, less credit reporting) - not necessarily different treatment.",
+         "Compare each group's predicted vs actual rate, and its PR-AUC vs 'All complaints'. A lower PR-AUC "
+         "means the model ranks that group's complaints less well."]))
 
     out = config.REPORTS / "m3_report.html"
     out.write_text(build_html("Complaint risk model - will the company pay?",

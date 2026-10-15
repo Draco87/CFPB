@@ -91,3 +91,55 @@ Valid JSON: **100%**. All three fields correct: 36.9%.
 3. **Its real value is multi-field extraction in one pass**, beating naive baselines by 7-15 points on sub-product and issue - a single model where a classifier approach would need one model per field.
 4. **Errors cascade:** a wrong product usually means wrong sub-product and issue. Low-confidence cases should go to a human.
 5. **Issue labels are ambiguous by design** (e.g. "debt not owed" vs "written notification about debt"); consumers choose them when filing.
+
+## Module 3 - Risk prediction: will a complaint end with the company paying?
+
+When a complaint arrives, how likely is it to end with **monetary relief**? Those are the complaints where the company most
+likely made a mistake. The purpose is to **find them early** - help and repay the customer faster, fix the root cause,
+and avoid regulatory escalation - not to reduce legitimate payouts.
+
+### Pipeline
+| Script | Where | What it does |
+|---|---|---|
+| `m3_01_build_features.py` | local | time windows, history-based rates, text model, keyword flags |
+| `m3_02_train_explain.py` | local | 4 models, bootstrap CIs, SHAP, calibration + recalibration, group check, HTML report |
+| `eda_report.py` | local | plain-English analysis of the whole dataset (trends and anomalies) |
+
+**Time windows (each step uses only the past):** history May 2021-Dec 2022 (company/issue payout rates + text model) ->
+train Jan 2023-Jun 2024 (300k) -> validation Jul-Dec 2024 (100k) -> test Jan 2025-Feb 2026 (200k).
+**Leakage guard:** `company_response`, `company_public_response`, `timely` and `date_sent` are filled in after the
+complaint arrives and are never used as inputs.
+
+### Results - test set (200,000 complaints, 2025-26; payout rate 1.34%, about 1 in 75)
+| Model | PR-AUC (95% CI) | ROC-AUC | Payouts found in riskiest 10% |
+|---|---|---|---|
+| Company track record only (no training) | 0.187 (0.176-0.197) | 0.950 | 86% |
+| Logistic regression (details) | 0.284 (0.270-0.302) | 0.969 | 95% |
+| XGBoost (details) | **0.287** (0.273-0.305) | 0.971 | 95% |
+| XGBoost (details + text) | 0.285 (0.271-0.300) | 0.974 | **97%** |
+
+Random ranking would score PR-AUC ~0.013. Adding the text: PR-AUC -0.003 (95% CI -0.011 to +0.005) - not significant.
+Top SHAP drivers: company's past payout rate, the text score, company, issue, issue's past payout rate.
+
+### Calibration
+| | Average predicted | Actual |
+|---|---|---|
+| Original model | 1.86% | 1.34% |
+| Recalibrated (Platt scaling on Jul-Dec 2024) | 1.82% | 1.34% |
+Riskiest 2% of complaints: predicted ~46%, actual ~28%.
+
+### Group check (first look; Module 6 goes deeper)
+| Group | Complaints | Actual payout rate | Average predicted | PR-AUC |
+|---|---|---|---|---|
+| All | 200,000 | 1.3% | 1.9% | 0.285 |
+| Older American | 3,731 | 8.0% | 9.2% | 0.376 |
+| Servicemember | 9,599 | 3.2% | 5.0% | 0.217 |
+
+### Findings
+1. **Reviewing the riskiest 10% of complaints finds 97% of payout cases** (vs 10% in random order).
+2. **Who the complaint is about matters more than what it says:** company history alone finds 86%; the text adds no significant PR-AUC.
+3. **Simple beats fancy:** logistic regression ties with XGBoost - the more explainable model is the sensible choice.
+4. **Ranking is stable, probabilities are not.** The payout rate fell from 3.0% (2021-22) to 2.3%, 1.5% and 1.3%. Predictions
+   are ~40% too high on 2025-26 data, and recalibrating on H2 2024 barely helps - the same kinds of complaints were paid
+   less often during the test period itself. Fix: recalibrate on a schedule with the latest resolved complaints (Module 7).
+5. **Servicemember complaints are ranked less well** (PR-AUC 0.217 vs 0.285) - to be tested for significance in Module 6.
