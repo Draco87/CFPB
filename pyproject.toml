@@ -11,6 +11,10 @@ dependencies = [
     "matplotlib>=3.7",
     "joblib",
     "xgboost>=3.2.0",
+    "requests>=2.34.2",
+    "sentence-transformers>=6.1.0",
+    "faiss-cpu>=1.15.1",
+    "rank-bm25>=0.2.2",
 ]
 
 [dependency-groups]
