@@ -3,8 +3,43 @@
 Triage, risk prediction and regulation-grounded response drafting for consumer financial complaints.
 
 ## Data
-- `data/raw/narratives_archive/` - CFPB FOIA Reading Room archive exports (May 2021 - Feb 2026), **with** complaint narratives (3.03M complaints). The CFPB stopped publishing narratives in its live database on 14 Aug 2026; the archive preserves them.
-- `data/raw/ccdb_current/complaints.csv` - current Consumer Complaint Database export (metadata only, no narratives). Used for tabular risk modelling and drift monitoring.
+
+### 1. Complaint narratives - CFPB FOIA Reading Room archive
+On 14 Aug 2026 the CFPB stopped publishing complaint narratives in its live Consumer Complaint Database.
+Previously published narratives are preserved in the
+[CFPB Consumer Complaint Database Narratives Archive](https://www.consumerfinance.gov/foia-requests/foia-electronic-reading-room/cfpb-consumer-complaint-database-narratives-archive/)
+(FOIA Electronic Reading Room). This project uses exports 3-15 (May 2021 - Feb 2026, **3.03M complaints with narratives**),
+stored in `data/raw/narratives_archive/`:
+
+| # | Period | File |
+|---|---|---|
+| 3 | May 2021 through October 2022 | [CCDB_Export_3_May_2021_through_October_2022.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_3_May_2021_through_October_2022.zip) |
+| 4 | November 2022 through August 2023 | [CCDB_Export_4_November_2022_through_August_2023.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_4_November_2022_through_August_2023.zip) |
+| 5 | September 2023 through March 2024 | [CCDB_Export_5_September_2023_through_March_2024.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_5_September_2023_through_March_2024.zip) |
+| 6 | April 2024 through July 2024 | [CCDB_Export_6_April_2024_through_July_2024.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_6_April_2024_through_July_2024.zip) |
+| 7 | August 2024 through October 2024 | [CCDB_Export_7_August_2024_through_October_2024.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_7_August_2024_through_October_2024.zip) |
+| 8 | November 2024 through December 2024 | [CCDB_Export_8_November_2024_through_December_2024.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_8_November_2024_through_December_2024.zip) |
+| 9 | January 2025 through February 2025 | [CCDB_Export_9_January_2025_through_February_2025.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_9_January_2025_through_February_2025.zip) |
+| 10 | March 2025 through April 2025 | [CCDB_Export_10_March_2025_through_April_2025.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_10_March_2025_through_April_2025.zip) |
+| 11 | May 2025 through June 2025 | [CCDB_Export_11_May_2025_through_June_2025.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_11_May_2025_through_June_2025.zip) |
+| 12 | July 2025 through August 2025 | [CCDB_Export_12_July_2025_through_August_2025.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_12_July_2025_through_August_2025.zip) |
+| 13 | September 2025 through October 2025 | [CCDB_Export_13_September_2025_through_October_2025.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_13_September_2025_through_October_2025.zip) |
+| 14 | November 2025 through December 2025 | [CCDB_Export_14_November_2025_through_December_2025.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_14_November_2025_through_December_2025.zip) |
+| 15 | January 2026 through February 2026 | [CCDB_Export_15_January_2026_through_February_2026.zip](https://files.consumerfinance.gov/f/documents/CCDB_Export_15_January_2026_through_February_2026.zip) |
+
+The archive also holds older exports (Dec 2011 - Apr 2021) and newer ones (Mar - Aug 2026) not used here.
+
+### 2. Current Consumer Complaint Database export
+`data/raw/ccdb_current/complaints.csv` - the live database export (all complaints, metadata only, no narratives),
+from the [CFPB Consumer Complaint Database](https://www.consumerfinance.gov/data-research/consumer-complaints/).
+Used to check publication gaps (`m1_05`) and for drift monitoring.
+
+### 3. Regulations (Module 4)
+Downloaded by `m4_01_fetch_regs.py` into `data/raw/regs/`:
+- [eCFR API](https://www.ecfr.gov/reader-aids/ecfr-developer-resources), Title 12, current as of 2026-10-13: Regulations
+  E (12 CFR 1005), F (1006), V (1022), X (1024), Z (1026) and DD (1030)
+- US Code via govinfo: [Fair Credit Reporting Act](https://www.govinfo.gov/content/pkg/USCODE-2023-title15/html/USCODE-2023-title15-chap41-subchapIII.htm)
+  (15 U.S.C. 1681 ff.) and [Fair Debt Collection Practices Act](https://www.govinfo.gov/content/pkg/USCODE-2023-title15/html/USCODE-2023-title15-chap41-subchapV.htm) (15 U.S.C. 1692 ff.)
 
 ## Setup (uv)
 ```bash
@@ -143,3 +178,42 @@ Riskiest 2% of complaints: predicted ~46%, actual ~28%.
    are ~40% too high on 2025-26 data, and recalibrating on H2 2024 barely helps - the same kinds of complaints were paid
    less often during the test period itself. Fix: recalibrate on a schedule with the latest resolved complaints (Module 7).
 5. **Servicemember complaints are ranked less well** (PR-AUC 0.217 vs 0.285) - to be tested for significance in Module 6.
+
+## Module 4 - RAG: regulation-grounded draft replies
+
+For each complaint, find the regulations that apply and have a local LLM draft a reply for an agent to review,
+citing only the retrieved rules. An open-book exam rather than answering from memory.
+
+### Pipeline
+| Script | What it does |
+|---|---|
+| `m4_01_fetch_regs.py` | downloads 6 CFPB regulations + FCRA + FDCPA; splits into 757 units (236 rule sections, 302 official interpretations, 219 appendices) |
+| `m4_02_build_index.py` | 5,394 chunks (~220 words, 40 overlap, section title kept on every chunk); BM25 keyword index + FAISS index of `BAAI/bge-small-en-v1.5` embeddings |
+| `m4_03_draft_replies.py` | drafts replies for sample complaints, checks citations, writes `reports/m4_drafts.html` / `.jsonl` |
+| `src/cfpb/rag.py` | reusable retrieval + generation code (used again in Modules 5 and 7) |
+
+**Retrieval:** LLM rewrites the complaint into one short regulatory question -> hybrid search (BM25 + dense, reciprocal
+rank fusion) limited to the regulations for the complaint's product -> cross-encoder reranking
+(`ms-marco-MiniLM-L-6-v2`) -> top 5, at most 2 chunks per section. Appendices (model forms/clauses) are excluded.
+**Generation:** `qwen2.5:3b` via Ollama on a 4 GB GTX 1650 Ti (context 6,144 tokens, answer capped at 450 tokens), with
+rules: cite only provided excerpts, state deadlines only if they appear in an excerpt, never contradict the complaint.
+
+### Results - 27 test complaints (3 per product)
+| Check | Result |
+|---|---|
+| Drafts citing at least one rule | 27/27 |
+| Citations that point to a retrieved passage | 62/62 (100%) |
+| Drafts following the required format | 17/27 |
+| Average time per draft | 29 s |
+
+### Findings
+1. **Retrieval quality decides answer quality.** The first version retrieved model-form boilerplate (Appendix A to Reg E)
+   for an unauthorized-transfer complaint; the LLM then stated a wrong deadline ("investigate within 60 days" - actually
+   the consumer's reporting window), yet the citation check still passed.
+2. **Citation validity is not correctness.** A citation can point to a retrieved passage and still misstate it - which is
+   why Module 5 measures faithfulness and answer quality separately.
+3. **Fixes that worked:** excluding appendices, LLM query rewriting and a stricter prompt -> the same complaint retrieves
+   12 CFR 1005.11 and 1005.6 and states the correct 10-business-day investigation deadline.
+4. **Remaining gaps:** omissions (e.g. provisional credit when an investigation is extended) and loose format compliance
+   (17/27) from a 3B model - measured in Module 5.
+
