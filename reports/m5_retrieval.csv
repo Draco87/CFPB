@@ -1,0 +1,8 @@
+setup,found_in_top5,found_rate,recall_at_5,mrr_at_10
+Keywords only (BM25),21/34,0.618,0.574,0.399
+Meaning only (embeddings),19/34,0.559,0.544,0.492
+Hybrid (keywords + meaning),25/34,0.735,0.706,0.538
+Hybrid + rerank,25/34,0.735,0.691,0.545
+Hybrid + rerank + rewrite (final),29/34,0.853,0.809,0.662
+"Final, without product filter",27/34,0.794,0.75,0.595
+"Final, with model forms (appendices)",29/34,0.853,0.809,0.663

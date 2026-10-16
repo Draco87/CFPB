@@ -44,6 +44,10 @@ def main():
     ap.add_argument("--mode", choices=["hybrid", "dense", "bm25"], default="hybrid")
     ap.add_argument("--no-rerank", action="store_true")
     ap.add_argument("--no-filter", action="store_true", help="search all regulations, not just the product's")
+    ap.add_argument("--include-appendices", action="store_true", help="also search model forms (Module 4 v1 behaviour)")
+    ap.add_argument("--out", default="m4_drafts", help="output file name (without extension) in reports/")
+    ap.add_argument("--multi-query", action="store_true",
+                    help="search with the rewritten question AND the original complaint, then merge")
     ap.add_argument("--no-rewrite", action="store_true",
                     help="search with the raw complaint instead of an LLM-rewritten question")
     args = ap.parse_args()
@@ -52,8 +56,10 @@ def main():
     if not ok:
         raise SystemExit(msg)
     print("Loading search indexes and models ...")
-    retriever = Retriever(rerank=not args.no_rerank)
-    opts = dict(model=args.model, k=args.k, mode=args.mode, filter_product=not args.no_filter, rewrite=not args.no_rewrite)
+    retriever = Retriever(rerank=True)
+    opts = dict(model=args.model, k=args.k, mode=args.mode, filter_product=not args.no_filter,
+                rewrite=not args.no_rewrite, rerank=not args.no_rerank, include_appendices=args.include_appendices,
+                multi_query=args.multi_query)
 
     if args.text:
         show(answer_complaint(retriever, args.text, args.product, args.issue, **opts))
@@ -72,7 +78,7 @@ def main():
                         "retrieved": res["passages"][["citation", "title", "text"]].to_dict("records"),
                         "draft": res["draft"], "check": res["check"], "seconds": res["seconds"], "settings": opts})
 
-    out = config.REPORTS / "m4_drafts.jsonl"
+    out = config.REPORTS / f"{args.out}.jsonl"
     with open(out, "w", encoding="utf-8") as f:
         for r in records:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -104,7 +110,7 @@ def main():
                   + (f" - NOT retrieved: {html.escape(', '.join(c['invalid']))}" if c["invalid"] else "")
                   + f". Time: {r['seconds']}s."]
         sections.append((html.escape(f"{r['product']} - {r['issue']}"), [], block, bullet))
-    rep = config.REPORTS / "m4_drafts.html"
+    rep = config.REPORTS / f"{args.out}.html"
     rep.write_text(build_html("RAG draft replies", "Regulation-grounded draft replies for agents to review.", sections),
                    encoding="utf-8")
     print(f"\n{with_cite}/{n} drafts with citations | {valid}/{cited} citations valid | ~{secs:.0f}s per draft")

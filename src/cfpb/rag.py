@@ -42,7 +42,7 @@ RULES USED:
 - [citation]: <one line on what it requires>"""
 
 CITE_RE = re.compile(r"\[((?:12 CFR|15 U\.S\.C\.)[^\]]*)\]")
-BASE_RE = re.compile(r"(12 CFR \d+\.\d+[a-z]?|15 U\.S\.C\. \d+[0-9a-z]*(?:[\-–]\d+)?)")
+BASE_RE = re.compile(r"(12 CFR \d+\.\d+[a-z]?|15 U\.S\.C\. \d+[0-9a-z]*(?:-\d+)?)")
 
 
 def tokenize(text):
@@ -72,10 +72,14 @@ class Retriever:
         self.embedder = SentenceTransformer(info["embed_model"], device=device)
         self.reranker = CrossEncoder(RERANK_MODEL, device=device) if rerank else None
 
-    def search(self, query, product=None, k=5, mode="hybrid", pool=40, filter_product=True, max_per_citation=2):
-        """mode: 'hybrid' | 'dense' | 'bm25'. filter_product: only search regulations that apply to the product."""
+    def search(self, query, product=None, k=5, mode="hybrid", pool=40, filter_product=True, max_per_citation=2,
+               rerank=True, include_appendices=False):
+        """mode: 'hybrid' | 'dense' | 'bm25'. filter_product: only search regulations that apply to the product.
+        rerank: re-order the candidates with the cross-encoder. include_appendices: also search model forms."""
         n = len(self.chunks)
-        allowed = (self.chunks["kind"] != "appendix").to_numpy() if "kind" in self.chunks else np.ones(n, bool)
+        allowed = np.ones(n, bool)
+        if "kind" in self.chunks and not include_appendices:
+            allowed = (self.chunks["kind"] != "appendix").to_numpy()
         if product and filter_product:
             in_product = self.chunks["products"].str.split("|").apply(lambda ps: product in ps).to_numpy()
             if (allowed & in_product).any():
@@ -95,11 +99,40 @@ class Retriever:
             for r, i in enumerate(lst):
                 fused[i] = fused.get(i, 0.0) + 1.0 / (60 + r + 1)
         cand = sorted(fused, key=fused.get, reverse=True)[:pool]
-        if self.reranker is not None and cand:
+        if rerank and self.reranker is not None and cand:
             scores = self.reranker.predict([(query, self.chunks.iloc[i]["text"]) for i in cand])
             cand = [cand[j] for j in np.argsort(-np.asarray(scores))]
         picked, per = [], {}                  # variety: at most `max_per_citation` pieces of one section
         for i in cand:
+            c = self.chunks.iloc[i]["citation"]
+            if per.get(c, 0) < max_per_citation:
+                picked.append(i)
+                per[c] = per.get(c, 0) + 1
+            if len(picked) == k:
+                break
+        out = self.chunks.iloc[picked].copy()
+        out["rank"] = range(1, len(out) + 1)
+        return out.reset_index(drop=True)
+
+
+    def search_multi(self, queries, product=None, k=5, rerank_query=None, pool=40, rerank=True,
+                     max_per_citation=2, **opts):
+        """Multi-query retrieval: search with several phrasings (e.g. the rewritten question AND the original
+        complaint), merge the candidate lists with reciprocal rank fusion, then rerank once."""
+        fused = {}
+        for q in queries:
+            res = self.search(q, product=product, k=pool, pool=pool, rerank=False, max_per_citation=pool, **opts)
+            for r, cid in enumerate(res["chunk_id"]):
+                fused[cid] = fused.get(cid, 0.0) + 1.0 / (60 + r + 1)
+        cand = sorted(fused, key=fused.get, reverse=True)[:pool]
+        pos = {cid: i for i, cid in enumerate(self.chunks["chunk_id"])}
+        idx = [pos[c] for c in cand]
+        if rerank and self.reranker is not None and idx:
+            rq = rerank_query or " ".join(queries)
+            scores = self.reranker.predict([(rq, self.chunks.iloc[i]["text"]) for i in idx])
+            idx = [idx[j] for j in np.argsort(-np.asarray(scores))]
+        picked, per = [], {}
+        for i in idx:
             c = self.chunks.iloc[i]["citation"]
             if per.get(c, 0) < max_per_citation:
                 picked.append(i)
@@ -155,6 +188,8 @@ def draft_reply(complaint, product, issue, passages, model=DEFAULT_LLM):
 
 # ---------- checks
 def base_citation(c):
+    """'12 CFR 1005.11(c) (Official Interpretation)' -> '12 CFR 1005.11'; dashes normalised."""
+    c = c.replace("–", "-")
     m = BASE_RE.search(c)
     return m.group(1) if m else c.strip()
 
@@ -169,10 +204,17 @@ def check_citations(answer, passages):
 
 
 def answer_complaint(retriever, complaint, product, issue, model=DEFAULT_LLM, k=5, mode="hybrid",
-                     filter_product=True, rewrite=True):
+                     filter_product=True, rewrite=True, rerank=True, include_appendices=False, multi_query=False):
     t0 = time.time()
     query = rewrite_query(complaint, product, issue, model) if rewrite else build_query(complaint, product, issue)
-    passages = retriever.search(query, product=product, k=k, mode=mode, filter_product=filter_product)
+    opts = dict(mode=mode, filter_product=filter_product, include_appendices=include_appendices)
+    if multi_query and rewrite:
+        original = build_query(complaint, product, issue)
+        passages = retriever.search_multi([query, original], product=product, k=k, rerank=rerank,
+                                          rerank_query=f"{query} {clip(complaint, 60)}", **opts)
+        query = f"{query}  ||  {original[:120]}..."
+    else:
+        passages = retriever.search(query, product=product, k=k, rerank=rerank, **opts)
     draft = draft_reply(complaint, product, issue, passages, model=model)
     return {"query": query, "passages": passages, "draft": draft,
             "check": check_citations(draft, passages), "seconds": round(time.time() - t0, 1)}

@@ -1,0 +1,318 @@
+{
+  "description": "Answer key for retrieval: realistic complaints and the rule section(s) that clearly govern them. A retrieved passage counts if its section matches (official interpretations of that section also count).",
+  "scenarios": [
+    {
+      "id": 1,
+      "product": "Bank account",
+      "issue": "Problem with a lender or other company charging your account",
+      "complaint": "Two debit card transactions I never made appeared on my checking account. I told the bank the same day but they say I am responsible for the money.",
+      "expected": [
+        "12 CFR 1005.6",
+        "12 CFR 1005.11"
+      ]
+    },
+    {
+      "id": 2,
+      "product": "Bank account",
+      "issue": "Managing an account",
+      "complaint": "I reported an error on my bank statement over a month ago and the bank still has not finished its investigation or put the money back in my account.",
+      "expected": [
+        "12 CFR 1005.11"
+      ]
+    },
+    {
+      "id": 3,
+      "product": "Bank account",
+      "issue": "Problem with a lender or other company charging your account",
+      "complaint": "My debit card was stolen and I waited about a week to tell my bank. Now they say I have to cover all the fraudulent ATM withdrawals.",
+      "expected": [
+        "12 CFR 1005.6"
+      ]
+    },
+    {
+      "id": 4,
+      "product": "Bank account",
+      "issue": "Managing an account",
+      "complaint": "My bank charged me overdraft fees on everyday debit card purchases even though I never agreed to overdraft coverage.",
+      "expected": [
+        "12 CFR 1005.17"
+      ]
+    },
+    {
+      "id": 5,
+      "product": "Bank account",
+      "issue": "Managing an account",
+      "complaint": "The bank raised the monthly maintenance fee on my savings account without telling me in advance.",
+      "expected": [
+        "12 CFR 1030.5"
+      ]
+    },
+    {
+      "id": 6,
+      "product": "Bank account",
+      "issue": "Opening an account",
+      "complaint": "When I opened my checking account the bank never gave me any written list of the fees and the interest rate terms.",
+      "expected": [
+        "12 CFR 1030.4"
+      ]
+    },
+    {
+      "id": 7,
+      "product": "Money transfer / virtual currency",
+      "issue": "Other transaction problem",
+      "complaint": "I sent money to my family abroad through a transfer company and they received less than the amount I was promised. The company refuses to fix it.",
+      "expected": [
+        "12 CFR 1005.33"
+      ]
+    },
+    {
+      "id": 8,
+      "product": "Money transfer / virtual currency",
+      "issue": "Other transaction problem",
+      "complaint": "I tried to cancel an international money transfer twenty minutes after I paid for it, but the provider refused to cancel or refund it.",
+      "expected": [
+        "12 CFR 1005.34"
+      ]
+    },
+    {
+      "id": 9,
+      "product": "Credit / prepaid card",
+      "issue": "Unauthorized transactions or other transaction problem",
+      "complaint": "Someone used my prepaid card for purchases I did not make, and the card company refuses to investigate because I never registered the card.",
+      "expected": [
+        "12 CFR 1005.18",
+        "12 CFR 1005.11"
+      ]
+    },
+    {
+      "id": 10,
+      "product": "Credit / prepaid card",
+      "issue": "Problem with a purchase shown on your statement",
+      "complaint": "I disputed a charge on my credit card statement for an item that was never delivered, and the card issuer never responded to my letter.",
+      "expected": [
+        "12 CFR 1026.13"
+      ]
+    },
+    {
+      "id": 11,
+      "product": "Credit / prepaid card",
+      "issue": "Problem with a purchase shown on your statement",
+      "complaint": "My credit card was used fraudulently and the issuer is holding me liable for over a thousand dollars of charges I did not make.",
+      "expected": [
+        "12 CFR 1026.12"
+      ]
+    },
+    {
+      "id": 12,
+      "product": "Credit / prepaid card",
+      "issue": "Fees or interest",
+      "complaint": "My credit card company raised my interest rate without giving me any advance notice.",
+      "expected": [
+        "12 CFR 1026.9"
+      ]
+    },
+    {
+      "id": 13,
+      "product": "Credit / prepaid card",
+      "issue": "Fees or interest",
+      "complaint": "I was charged a 41 dollar late fee even though my payment was one day late and my minimum payment was only 25 dollars.",
+      "expected": [
+        "12 CFR 1026.52"
+      ]
+    },
+    {
+      "id": 14,
+      "product": "Credit / prepaid card",
+      "issue": "Problem when making payments",
+      "complaint": "I paid more than the minimum on my credit card, but the extra was applied to the balance with the lowest interest rate instead of the highest.",
+      "expected": [
+        "12 CFR 1026.53"
+      ]
+    },
+    {
+      "id": 15,
+      "product": "Mortgage",
+      "issue": "Trouble during payment process",
+      "complaint": "I sent my mortgage servicer a written notice that they misapplied my payments, and they never corrected it or replied.",
+      "expected": [
+        "12 CFR 1024.35"
+      ]
+    },
+    {
+      "id": 16,
+      "product": "Mortgage",
+      "issue": "Trouble during payment process",
+      "complaint": "I asked my mortgage servicer in writing for my payment history and the name of the owner of my loan and never got an answer.",
+      "expected": [
+        "12 CFR 1024.36"
+      ]
+    },
+    {
+      "id": 17,
+      "product": "Mortgage",
+      "issue": "Trouble during payment process",
+      "complaint": "My escrow payment went up sharply and the servicer never sent me an escrow account statement explaining the shortage.",
+      "expected": [
+        "12 CFR 1024.17"
+      ]
+    },
+    {
+      "id": 18,
+      "product": "Mortgage",
+      "issue": "Struggling to pay mortgage",
+      "complaint": "I submitted a complete loan modification application, but the servicer started foreclosure on my home anyway.",
+      "expected": [
+        "12 CFR 1024.41"
+      ]
+    },
+    {
+      "id": 19,
+      "product": "Mortgage",
+      "issue": "Trouble during payment process",
+      "complaint": "My servicer bought expensive homeowners insurance and charged it to my loan even though I already had my own insurance policy.",
+      "expected": [
+        "12 CFR 1024.37"
+      ]
+    },
+    {
+      "id": 20,
+      "product": "Mortgage",
+      "issue": "Trouble during payment process",
+      "complaint": "My mortgage payment arrived on time, but the servicer did not credit it until several days later and charged me a late fee.",
+      "expected": [
+        "12 CFR 1026.36"
+      ]
+    },
+    {
+      "id": 21,
+      "product": "Credit reporting",
+      "issue": "Incorrect information on your report",
+      "complaint": "I disputed an account on my credit report that is not mine and the credit bureau did not remove it or finish an investigation within 30 days.",
+      "expected": [
+        "15 U.S.C. 1681i"
+      ]
+    },
+    {
+      "id": 22,
+      "product": "Credit reporting",
+      "issue": "Improper use of your report",
+      "complaint": "I am a victim of identity theft and want the fraudulent accounts blocked from my credit report, but the credit bureau refuses.",
+      "expected": [
+        "15 U.S.C. 1681c-2"
+      ]
+    },
+    {
+      "id": 23,
+      "product": "Credit reporting",
+      "issue": "Credit monitoring or identity theft protection services",
+      "complaint": "I asked the credit bureau to put a fraud alert on my file after my wallet was stolen, and they never did.",
+      "expected": [
+        "15 U.S.C. 1681c-1"
+      ]
+    },
+    {
+      "id": 24,
+      "product": "Credit reporting",
+      "issue": "Improper use of your report",
+      "complaint": "A company pulled my credit report and created a hard inquiry even though I never applied for anything with them.",
+      "expected": [
+        "15 U.S.C. 1681b"
+      ]
+    },
+    {
+      "id": 25,
+      "product": "Credit reporting",
+      "issue": "Incorrect information on your report",
+      "complaint": "A collection account from more than ten years ago is still showing on my credit report.",
+      "expected": [
+        "15 U.S.C. 1681c"
+      ]
+    },
+    {
+      "id": 26,
+      "product": "Credit reporting",
+      "issue": "Incorrect information on your report",
+      "complaint": "I disputed wrong information directly with my credit card company, which reports to the bureaus, and they keep reporting the same wrong information.",
+      "expected": [
+        "12 CFR 1022.43",
+        "15 U.S.C. 1681s-2"
+      ]
+    },
+    {
+      "id": 27,
+      "product": "Debt collection",
+      "issue": "Written notification about debt",
+      "complaint": "A debt collector contacted me about a debt I don't recognize and never sent me any written notice explaining the debt or how to dispute it.",
+      "expected": [
+        "12 CFR 1006.34",
+        "15 U.S.C. 1692g"
+      ]
+    },
+    {
+      "id": 28,
+      "product": "Debt collection",
+      "issue": "Communication tactics",
+      "complaint": "A debt collector calls me eight times a day and uses abusive language when I answer.",
+      "expected": [
+        "12 CFR 1006.14",
+        "15 U.S.C. 1692d"
+      ]
+    },
+    {
+      "id": 29,
+      "product": "Debt collection",
+      "issue": "Communication tactics",
+      "complaint": "A debt collector keeps calling me at work even after I told them my employer does not allow these calls.",
+      "expected": [
+        "12 CFR 1006.6",
+        "15 U.S.C. 1692c"
+      ]
+    },
+    {
+      "id": 30,
+      "product": "Debt collection",
+      "issue": "Threatened to contact someone or share information improperly",
+      "complaint": "The debt collector threatened that I would be arrested if I did not pay the full amount today.",
+      "expected": [
+        "12 CFR 1006.18",
+        "15 U.S.C. 1692e"
+      ]
+    },
+    {
+      "id": 31,
+      "product": "Debt collection",
+      "issue": "Took or threatened to take negative or legal action",
+      "complaint": "A collector sued me over a credit card debt that is more than ten years old, well past the statute of limitations.",
+      "expected": [
+        "12 CFR 1006.26"
+      ]
+    },
+    {
+      "id": 32,
+      "product": "Vehicle loan",
+      "issue": "Getting a loan or lease",
+      "complaint": "When I financed my car, the dealer never clearly showed me the APR and the total finance charge before I signed.",
+      "expected": [
+        "12 CFR 1026.18"
+      ]
+    },
+    {
+      "id": 33,
+      "product": "Student loan",
+      "issue": "Getting a loan",
+      "complaint": "My private student loan lender never gave me the required disclosures about the interest rate and loan terms before I accepted the loan.",
+      "expected": [
+        "12 CFR 1026.47"
+      ]
+    },
+    {
+      "id": 34,
+      "product": "Payday / personal loan",
+      "issue": "Getting the loan",
+      "complaint": "My personal loan contract did not show the annual percentage rate or the total of payments anywhere.",
+      "expected": [
+        "12 CFR 1026.18"
+      ]
+    }
+  ]
+}
