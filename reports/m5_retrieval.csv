@@ -6,3 +6,4 @@ Hybrid + rerank,25/34,0.735,0.691,0.545
 Hybrid + rerank + rewrite (final),29/34,0.853,0.809,0.662
 "Final, without product filter",27/34,0.794,0.75,0.595
 "Final, with model forms (appendices)",29/34,0.853,0.809,0.663
+Final + original complaint (multi-query),29/34,0.853,0.779,0.693
