@@ -217,3 +217,62 @@ rules: cite only provided excerpts, state deadlines only if they appear in an ex
 4. **Remaining gaps:** omissions (e.g. provisional credit when an investigation is extended) and loose format compliance
    (17/27) from a 3B model - measured in Module 5.
 
+
+## Module 5 - Evaluating the RAG system
+
+Two questions, both answerable without legal expertise: (1) **does the search find the right rules?** - checked against
+an answer key; (2) **do the drafts say only what those rules say?** - checked by a larger LLM acting as judge, which is
+itself checked by a human.
+
+### Pipeline
+| Script | Where | What it does |
+|---|---|---|
+| `eval/golden_retrieval.json` | - | answer key: 34 realistic complaints, each with the rule section(s) that clearly govern it |
+| `m5_01_retrieval_eval.py` | local | 8 search setups scored on the answer key (rewritten questions cached in `eval/rewrites_cache.json`) |
+| `m4_03_draft_replies.py --no-rewrite --include-appendices --out m4_drafts_v1` | local | "before" drafts (Module 4 version 1) for comparison |
+| `m5_02_judge.py` | Kaggle (T4 x2) | Qwen2.5-7B-Instruct judges every draft: lists rule statements, marks each supported / unsupported by an excerpt |
+| `m5_03_report.py` | local | `reports/m5_report.html`; creates `reports/m5_judge_check.csv` for the human check of the judge |
+
+### Results - retrieval (34 answer-key complaints)
+| Search setup | Correct rule in top 5 | Recall@5 | MRR@10 |
+|---|---|---|---|
+| Keywords only (BM25) | 21/34 | 0.57 | 0.40 |
+| Meaning only (embeddings) | 19/34 | 0.54 | 0.49 |
+| Hybrid (keywords + meaning) | 25/34 | 0.71 | 0.54 |
+| Hybrid + rerank | 25/34 | 0.69 | 0.55 |
+| **Hybrid + rerank + LLM query rewrite (final)** | **29/34 (85%)** | **0.81** | 0.66 |
+| Final, without product filter | 27/34 | 0.75 | 0.60 |
+| Final, with model forms (appendices) | 29/34 | 0.81 | 0.66 |
+| Final + original complaint (multi-query) | 29/34 | 0.78 | **0.69** |
+
+### Results - faithfulness (LLM-as-judge, 27 drafts each)
+| Drafts | Rule statements | Supported (judge) | Drafts with an unsupported statement | Addresses the problem (1-5) |
+|---|---|---|---|---|
+| Version 1 (raw complaint as query, model forms included) | 68 | 35 (51%) | 12/27 | 3.0 |
+| Final setup | 79 | 37 (47%) | 18/26 | 2.8 |
+
+### Results - human check of the judge (20 random statements from the final drafts)
+| | |
+|---|---|
+| Not rule statements at all (promises such as "we will review your account") | 6/20 - the judge should have skipped them; it marked 5 unsupported |
+| Agreement with the judge on the 14 real rule statements | 10/14 (71%) |
+| Judge too strict (rejected a correct paraphrase) / too lenient (accepted an exaggeration) | 3 / 1 |
+| Supported rule statements - human vs judge | **11/14 (79%)** vs 9/14 (64%) |
+
+### Findings
+1. **Each retrieval component earns its place.** Keyword and meaning search miss different things (hybrid 25 vs 21 / 19);
+   LLM query rewriting is the largest single gain (25 -> 29); the product filter adds 2. Reranking barely changes the
+   top 5. Excluding model forms does not change answer-key retrieval - its value in Module 4 was avoiding misleading
+   boilerplate, a single example rather than a measured effect.
+2. **Query rewriting sometimes drops the key detail** ("credit card" -> "the company"; "threatened arrest" -> "legal
+   action"). Searching with both the rewrite and the original complaint (multi-query) fixed 2 misses but broke 2 others -
+   a tie on 34 cases, so the simpler single-query setup is kept.
+3. **Faithful is not the same as correct.** Version 1 scores similar faithfulness because a draft that copies a model
+   form is "supported" by that form even when it is the wrong rule for the complaint (Module 4's wrong 60-day deadline).
+   Retrieval accuracy, not faithfulness, captures that improvement.
+4. **The LLM judge needed checking.** 30% of what it scored were not rule statements, and it missed paraphrases; the raw
+   ~50% faithfulness understates quality. On the human-checked sample ~79% of rule statements are supported (small
+   sample - an estimate). Its verdicts were usually right, but the excerpt it cited as evidence was often not the best one.
+5. **Remaining failure modes of the 3B drafter:** mixing up rules (corrected mortgage disclosures offered as a fix for
+   credit reporting), exaggerating scope ("all of Regulation E"), and dropping a rule's "if" condition. Next: a judge
+   prompt that removes promises and accepts paraphrases, and seeded-error tests of the judge (Module 6).

@@ -12,6 +12,7 @@ often you and the judge agree. This is how an LLM judge is validated - no legal 
 Writes reports/m5_report.html
 """
 import html
+import re
 import json
 
 import matplotlib.pyplot as plt
@@ -122,17 +123,28 @@ def judge_check_section(judged):
             "statement and the passages, and write <b>yes</b> (a passage says this) or <b>no</b> in <i>your_verdict</i>. "
             "Save and run this script again to see how often you and the judge agree."], "", [])
     df = pd.read_csv(CHECK)
-    done = df[df["your_verdict"].astype(str).str.strip().str.lower().isin(["yes", "no"])]
-    if not len(done):
+    v = df["your_verdict"].astype(str).str.strip().str.lower()
+    promises = df[v == "promise"]
+    done = df[v.isin(["yes", "no"])]
+    if not len(done) and not len(promises):
         return ("3. Can we trust the judge?", [f"<b>{CHECK.name}</b> exists but no verdicts are filled in yet."], "", [])
     you = done["your_verdict"].str.strip().str.lower() == "yes"
     judge = done["judge_says_supported"].astype(str).str.lower().isin(["true", "1"])
-    agree = (you == judge).mean()
-    return ("3. Can we trust the judge?", [
-        f"You checked <b>{len(done)}</b> of the judge's rulings by reading the passages yourself. "
-        f"You agreed with the judge on <b>{int((you == judge).sum())}/{len(done)}</b> ({pct(agree)}).",
-        f"Where you disagreed: the judge said 'supported' but you said no in {int((judge & ~you).sum())} cases "
-        f"(judge too lenient), and the reverse in {int((~judge & you).sum())} cases (judge too strict)."], "", [])
+    p_unsup = int((~promises["judge_says_supported"].astype(str).str.lower().isin(["true", "1"])).sum())
+    msg = [f"You checked <b>{len(df[v.isin(['yes', 'no', 'promise'])])}</b> of the judge's rulings by reading the passages yourself.",
+           f"<b>{len(promises)}</b> were not rule statements at all, only promises of action (e.g. 'we will review your "
+           f"account'). The judge should have ignored them, but counted them - and marked {p_unsup} of them unsupported. "
+           "So the faithfulness score is pulled down by promises, not only by invented rules."]
+    if len(done):
+        msg.append(f"By your reading, <b>{int(you.sum())}/{len(done)}</b> real rule statements are supported "
+                   f"({pct(you.mean())}); the judge said {int(judge.sum())}/{len(done)} ({pct(judge.mean())}). "
+                   "Small sample - treat as an estimate, not a precise score.")
+        msg.append(f"On the {len(done)} real rule statements you agreed with the judge on "
+                   f"<b>{int((you == judge).sum())}/{len(done)}</b> ({pct((you == judge).mean())}). Where you disagreed: "
+                   f"judge said supported but you said no in {int((judge & ~you).sum())} (too lenient), the reverse in "
+                   f"{int((~judge & you).sum())} (too strict).")
+    print("Judge check:", " ".join(re.sub("<[^>]+>", "", m) for m in msg))
+    return ("3. Can we trust the judge?", msg, "", [])
 
 
 def main():
