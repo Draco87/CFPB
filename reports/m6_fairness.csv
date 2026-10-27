@@ -1,0 +1,5 @@
+n,payout_rate,pred_rate,roc_auc,pr_auc,found,flag_rate,group,expected_from_products,roc_auc_diff_lo,roc_auc_diff_hi,found_diff_lo,found_diff_hi
+200000,0.0134,0.0182,0.9742,0.2846,0.9668,0.1,All complaints,0.0134,,,,
+3731,0.0804,0.0902,0.886,0.3763,0.9767,0.4905,Older American,0.054,-0.1048,-0.075,-0.008,0.0299
+9599,0.0318,0.0491,0.9175,0.2174,0.9574,0.2603,Servicemember,0.0299,-0.0686,-0.0511,-0.0385,0.0121
+187503,0.0114,0.0155,0.9782,0.2902,0.9663,0.0856,No tag,0.0119,0.0592,0.0744,-0.0187,0.0134
