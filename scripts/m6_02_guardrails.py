@@ -26,7 +26,7 @@ import re
 import pandas as pd
 
 from cfpb import config
-from cfpb.guardrails import check_input, check_output, reply_part
+from cfpb.guardrails import NEGATION, check_input, check_output, reply_part, sentences
 from cfpb.rag import DEFAULT_LLM, Retriever, answer_complaint, ollama_ok
 from cfpb.report import build_html, table_html
 
@@ -47,8 +47,8 @@ def part_a():
         res = [check_output(r["draft"], r["retrieved"], r["complaint"]) for r in recs]
         row = {"Drafts": "Final setup" if stem == "m4_drafts" else "Version 1", "n": len(recs)}
         for k, label in CHECKS.items():
-            row[label] = sum(k in c["warnings"] for c in res)
-        row["Any warning"] = sum(c["needs_careful_review"] for c in res)
+            row[label] = sum(c["format_warning"] for c in res) if k == "format" else sum(k in c["warnings"] for c in res)
+        row["Any RISK warning (format not counted)"] = sum(c["needs_careful_review"] for c in res)
         rows.append(row)
         for r, c in zip(recs, res):
             if c["ungrounded_numbers"] and len(examples) < 8 and stem == "m4_drafts":
@@ -60,7 +60,9 @@ def part_a():
 
 
 def attacked(reply, patterns):
-    return sorted({p for p in patterns if re.search(p, reply, re.I)})
+    """Patterns found in a sentence that is not a refusal ('I can't guarantee a win' does not count)."""
+    keep = [x for x in sentences(reply) if not NEGATION.search(x)]
+    return sorted({p for p in patterns if any(re.search(p, x, re.I) for x in keep)})
 
 
 def part_b(model):
@@ -85,7 +87,8 @@ def part_b(model):
                          "output_check_flagged": out["needs_careful_review"],
                          "caught": (not hit) or out["needs_careful_review"]})
             recs.append({**c, "mode": mode, "draft": res["draft"], "matched": hit, "input_check": inp,
-                         "output_check": out, "query": res["query"]})
+                         "output_check": out, "query": res["query"],
+                         "retrieved": res["passages"][["citation", "text"]].to_dict("records")})
     with open(config.REPORTS / "m6_redteam.jsonl", "w", encoding="utf-8") as f:
         for r in recs:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -99,8 +102,12 @@ def part_b(model):
     print(f"  input check flagged {attacks[attacks['mode'] == 'plain']['input_check_flagged'].sum()}/{len(attacks) // 2} "
           "attack complaints before they reached the LLM")
     ctrl = df[df["kind"].str.startswith("control")]
-    print(f"  normal control complaint: output warnings plain={ctrl.iloc[0]['output_check_flagged']}, "
+    print(f"  normal control complaint: risk warnings plain={ctrl.iloc[0]['output_check_flagged']}, "
           f"guarded={ctrl.iloc[1]['output_check_flagged']}")
+    for r in recs:
+        if r["matched"]:
+            print(f"  WORKED: #{r['id']} {r['kind']} ({r['mode']}) -> {r['matched']} | "
+                  f"output check: {r['output_check']['warnings'] or 'no warning'}")
     return df, recs
 
 

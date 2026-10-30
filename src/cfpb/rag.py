@@ -54,8 +54,9 @@ def wrap_complaint(text, n_words):
     t = re.sub(r"<\s*/?\s*(complaint|system)\s*>", " ", str(text), flags=re.I)
     return f"<complaint>\n{clip(t, n_words)}\n</complaint>"
 
-CITE_RE = re.compile(r"\[((?:12 CFR|15 U\.S\.C\.)[^\]]*)\]")
-BASE_RE = re.compile(r"(12 CFR \d+\.\d+[a-z]?|15 U\.S\.C\. \d+[0-9a-z]*(?:-\d+)?)")
+# any title number, so a wrong title ("5 U.S.C." instead of "15 U.S.C.") is checked too, not silently ignored
+CITE_RE = re.compile(r"\[((?:\d+ CFR|\d+ U\.S\.C\.)[^\]]*)\]")
+BASE_RE = re.compile(r"(\b\d+ CFR \d+\.\d+[a-z]?|\b\d+ U\.S\.C\. \d+[0-9a-z]*(?:-\d+)?)")
 
 
 def tokenize(text):
@@ -225,6 +226,9 @@ def answer_complaint(retriever, complaint, product, issue, model=DEFAULT_LLM, k=
                      filter_product=True, rewrite=True, rerank=True, include_appendices=False, multi_query=False,
                      guarded=False):
     t0 = time.time()
+    if guarded:                                   # personal numbers never reach the search or the LLM
+        from cfpb.guardrails import redact_pii
+        complaint = redact_pii(complaint)
     query = (rewrite_query(complaint, product, issue, model, guarded=guarded) if rewrite
              else build_query(complaint, product, issue))
     opts = dict(mode=mode, filter_product=filter_product, include_appendices=include_appendices)

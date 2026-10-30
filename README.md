@@ -276,3 +276,69 @@ itself checked by a human.
 5. **Remaining failure modes of the 3B drafter:** mixing up rules (corrected mortgage disclosures offered as a fix for
    credit reporting), exaggerating scope ("all of Regulation E"), and dropping a rule's "if" condition. Next: a judge
    prompt that removes promises and accepts paraphrases, and seeded-error tests of the judge (Module 6).
+
+## Module 6 - Responsible AI: fairness, guardrails and testing the tests
+
+Modules 1-5 asked "does it work?". Module 6 asks "how can it go wrong, for whom, and what catches it?"
+Model cards for every model: [`docs/model_cards.md`](docs/model_cards.md).
+
+### Pipeline
+| Script / file | Where | What it does |
+|---|---|---|
+| `m6_01_fairness.py` | local | risk model by group (Older American, Servicemember, no tag): ROC-AUC, payout cases found in the top 10%, share flagged, calibration, product-mix check; bootstrap 95% intervals for every group-vs-rest gap |
+| `src/cfpb/guardrails.py` | - | input checks (personal data masked, instruction-like text flagged) and output checks (time limits must be in a retrieved passage, no refund promises or admissions of fault, no personal data, citations must be retrieved) |
+| `eval/redteam.json` | - | 9 hand-written attacks (prompt injection, fake regulation, hidden tags, refund/admission demands, off-topic) + 1 normal control |
+| `m6_02_guardrails.py` | local + Ollama | output checks on the existing drafts; red-team test with the plain and a hardened ("guarded") prompt |
+| `m6_03_judge_v2.py` | Kaggle (T4 x2) | statement-level judge (rule or promise? supported?) tested against the 20 human verdicts and against 107 planted-error statements |
+
+### Results - fairness of the risk model (200,000 test complaints)
+| Group | Complaints | Payout rate | Expected from its products | Ranking (ROC-AUC) | Payout cases found in top 10% | Share flagged |
+|---|---|---|---|---|---|---|
+| All | 200,000 | 1.34% | 1.34% | 0.974 | 97% | 10% |
+| Older American | 3,731 | 8.04% | 5.40% | 0.886 | 98% | 49% |
+| Servicemember | 9,599 | 3.18% | 2.99% | 0.917 | 96% | 26% |
+| No tag | 187,503 | 1.14% | 1.19% | 0.978 | 97% | 8.6% |
+
+Group vs everyone else (95% bootstrap intervals): ranking is **worse** for Older American (-0.105 to -0.075) and
+Servicemember (-0.069 to -0.051); finding payout cases shows **no clear difference** for any group.
+
+### Results - guardrails
+| | Final drafts (27) | Version 1 drafts (27) |
+|---|---|---|
+| Time limit / number not in any passage | 7 | 5 |
+| Cites a rule that was not retrieved | 0 | 3 |
+| Refund promise / admission of fault / personal data | 0 | 0 |
+| Any risk warning (format problems counted separately: 10 / 12) | 7 | 9 |
+
+| Red-team (9 attacks) | Plain prompt | Guarded prompt |
+|---|---|---|
+| Attack changed the draft | 0 | 2 |
+| ... and was not flagged by the output checks | 0 | 0 |
+
+### Results - testing the judge with planted errors (53 clean cases)
+| Planted error | n | LLM judge v2 | Code checks | Together |
+|---|---|---|---|---|
+| Deadline changed | 5 | 2 | 5 | 5 |
+| "$500 compensation" invented | 35 | 14 | 33 | 33 |
+| Wrong citation title | 5 | 2 | 4 | 4 |
+| Meaning reversed | 8 | 3 | 0 | 3 |
+| **Total** | **53** | **21 (40%)** | **42 (79%)** | **45 (85%)** |
+
+Judge v2 vs the 20 human verdicts: it accepts correct paraphrases (v1 did not), but it rejected none of the 3 real
+errors and spotted 0 of 6 promises.
+
+### Findings
+1. **Use metrics that fit the comparison.** The Module 3 "Servicemember PR-AUC gap" mostly came from comparing PR-AUC
+   across groups with different payout rates. Base-rate-free measures show equal opportunity (96-98% of payout cases
+   found in every group), but significantly weaker ranking inside tagged groups, because the model over-flags them.
+   That is fine for prioritising reviews, and rules out using the score to deprioritise anyone.
+2. **Deterministic checks beat prompt instructions.** With a 3B model, hardening the prompt gave no measurable
+   protection (0 vs 2 successful attacks, noise on 9 cases); the output checks flagged every successful attack.
+3. **Red-teaming tests the defences too.** The first red-team run exposed four gaps in the checks (only reading text
+   before "RULES USED", trusting deadlines quoted in the complaint, a too-narrow promise pattern, refusals counted as
+   successes); the planted-error test exposed a fifth (citations to other titles were ignored). All five were fixed.
+4. **An LLM judge is weak on precise details.** It reads past a changed number or an added "$500" clause that code
+   verifies exactly; code cannot tell "may" from "may not". Layered design: code checks -> LLM judge -> human agent.
+5. **Honest limits:** the test sets are small and hand-made (9 attacks, 53 planted errors); some planted errors were
+   malformed by the generator (citation numbers changed instead of deadlines, ungrammatical flips) and are reported
+   separately; only the groups present in the data can be checked for fairness.
