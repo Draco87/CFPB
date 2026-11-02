@@ -15,10 +15,16 @@ dependencies = [
     "sentence-transformers>=6.1.0",
     "faiss-cpu>=1.15.1",
     "rank-bm25>=0.2.2",
+    "fastapi>=0.162.0",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
-dev = ["ipykernel"]   # run notebooks in VS Code; installed by `uv sync` automatically
+dev = [
+    "httpx>=0.28.1",
+    "ipykernel",
+    "pytest>=9.2.0",
+]   # run notebooks in VS Code; installed by `uv sync` automatically
 
 # Later modules - add each when you reach it, e.g.  uv add --group m1-bert torch transformers ...
 #   m1-bert : torch transformers datasets accelerate evaluate

@@ -1,0 +1,17 @@
+# One command to build and start the API:   docker compose up --build
+# Then open http://127.0.0.1:8000/docs . Stop with Ctrl+C (or `docker compose down`).
+services:
+  api:
+    build: .
+    image: cfpb-api:0.7
+    ports:
+      - "8000:8000"
+    environment:
+      # Ollama keeps running on your laptop (it needs the GPU); the container reaches it here
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./models:/app/models:ro                      # trained models + regulation index (read-only)
+      - ./logs:/app/logs                             # request log, for monitoring
+      - ${USERPROFILE:-~}/.cache/huggingface:/home/app/.cache/huggingface   # embedding/reranker models, no re-download

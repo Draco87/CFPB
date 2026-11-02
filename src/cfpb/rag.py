@@ -22,7 +22,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")   # harmless Windo
 INDEX_DIR = config.MODELS / "m4_index"
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "   # recommended for bge models
 RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-OLLAMA = "http://localhost:11434"
+OLLAMA = os.environ.get("OLLAMA_URL", "http://localhost:11434")   # Docker: http://host.docker.internal:11434
 DEFAULT_LLM = "qwen2.5:3b"   # fits a 4 GB GPU; use qwen2.5:7b with 6+ GB
 
 SYSTEM = """You help customer-care agents at a US bank draft replies to consumer complaints.

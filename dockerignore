@@ -1,0 +1,12 @@
+# keep the build small: only docker/ and src/ are copied into the image
+data/
+models/
+reports/
+logs/
+notebooks/
+.venv/
+.git/
+**/__pycache__/
+*.parquet
+*.zip
+*.csv
