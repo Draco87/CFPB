@@ -67,7 +67,9 @@ All numbers are from held-out data that is later in time than the training data 
 - PR-AUC must not be compared across groups: it falls when a group's payout rate is lower, even with perfect ranking.
 
 **Known limitations**
-- **Calibration drift:** the payout rate keeps falling, so predicted percentages run high (1.82% predicted vs 1.34% actual on test, even after recalibration). Ranking is unaffected. To be fixed with rolling recalibration (Module 7).
+- **Calibration drift:** the payout rate changes over time, so predicted percentages drift (1.82% predicted vs 1.34% actual on test with one-off recalibration). Ranking is unaffected. Fix (Module 7): recalibrate monthly on the latest 3 months with known outcomes, skipping months the drift monitor flags; this kept the percentages acceptable in 13 of 14 months and cut the average error from 0.49 to 0.21 percentage points.
+- **Missing inputs move the score:** leaving out sub-product or issue changes the prediction (the model learned patterns of missingness). Send them when known.
+- **Monitor before trusting:** alert when product-mix or score PSI exceeds 0.25 (Jan 2025 and Jan-Feb 2026 both did); in those months ranking and calibration degrade.
 
 ---
 

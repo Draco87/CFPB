@@ -342,3 +342,58 @@ errors and spotted 0 of 6 promises.
 5. **Honest limits:** the test sets are small and hand-made (9 attacks, 53 planted errors); some planted errors were
    malformed by the generator (citation numbers changed instead of deadlines, ungrammatical flips) and are reported
    separately; only the groups present in the data can be checked for fairness.
+
+## Module 7 - Production: API, tests, Docker and monitoring
+
+From scripts run by hand to a service another system can call - and a check of what happens as the data changes.
+
+### Pipeline
+| Script / file | What it does |
+|---|---|
+| `m7_01_export_artifacts.py` | saves what the API needs to score ONE complaint (history payout rates, top companies/states, categories, recalibration) + **skew test** |
+| `src/cfpb/risk.py` | builds the Module 3 features for a single complaint, predicts, recalibrates, explains (top 3 SHAP drivers) |
+| `src/cfpb/api.py` | FastAPI service: `/health`, `/triage`, `/risk`, `/draft`, `/analyze` |
+| `tests/test_api.py` | 13 automated tests (pytest) with fake models: validation, routing, privacy, guardrails, logging |
+| `m7_02_freeze_serving.py`, `Dockerfile`, `docker-compose.yml` | exact package versions pinned; CPU container; models mounted read-only; Ollama stays on the host GPU |
+| `m7_03_monitor.py` | month-by-month replay of Jan 2025 - Feb 2026: drift (PSI), accuracy, calibration, rolling recalibration |
+
+```bash
+uv run pytest -q                                   # 13 passed
+uv run uvicorn cfpb.api:app --reload               # or: docker compose up --build
+# open http://127.0.0.1:8000/docs
+```
+
+**Responsible-AI behaviour built into the API:** card/account numbers, SSNs, e-mails and phone numbers are masked
+before any model sees the text; the request log (`logs/requests.jsonl`) stores labels and numbers, never complaint
+text; drafts carry guardrail warnings and a `needs_careful_review` flag, which an injection attempt always sets.
+
+### Results - serving
+| Check | Result |
+|---|---|
+| Skew test: API features vs training features (2,000 test complaints, 24 features) | all identical; prediction difference 0 |
+| Automated tests | 13/13 passed |
+| Example `/analyze` (unauthorized ATM withdrawals, Bank of America) | Bank account (99.5%); payout probability 13.2% (~10x average, "high" band); draft flagged for a "30 days" deadline not found in any retrieved rule |
+| Latency (laptop) | triage ~2 ms, risk ~50 ms, draft ~25-30 s (66 s on the first call while models load) |
+
+### Results - monitoring replay (Jan 2025 - Feb 2026)
+| | Recalibrated once (Module 3) | Monthly | Monthly, skipping months with a major shift |
+|---|---|---|---|
+| Months with predicted/actual payout rate in 0.8-1.25 | 11/14 | 10/14 | **13/14** |
+| Average error in payout rate (percentage points) | 0.49 | 0.29 | **0.21** |
+
+Drift alerts (PSI > 0.25): **Jan 2025** (product mix 0.76 - the money-transfer spike; payout percentages 3.2x too
+high that month) and **Jan-Feb 2026** (product mix 2.9 - almost no credit-reporting narratives published; risk
+ROC-AUC 0.98 -> 0.90). Feb-Dec 2025 stable (PSI < 0.1, ROC-AUC ~0.98, triage macro-F1 0.64-0.74).
+
+### Findings
+1. **Test for training/serving skew before serving.** Rebuilding features with the serving code and comparing them to
+   the training features column by column is cheap and catches silent bugs (it caught a length mismatch on test data).
+2. **Monitoring found, unaided, both data problems discovered by hand in Module 1** - in the right months, and from
+   inputs alone, before any outcomes were known.
+3. **Recalibration must not learn from abnormal months.** Monthly recalibration cut the calibration error by 40%, but
+   inherited the January 2025 anomaly (percentages 35-40% too low for the next three months). Skipping months flagged
+   by the drift monitor fixed this: 13/14 months acceptable and 57% less error than recalibrating once.
+4. **Optional inputs change predictions.** A missing sub-product pushed the risk score up in the example, because the
+   model learned patterns of missingness - callers should send sub-product and issue when known.
+5. **Caveats:** outcomes of the latest months are incomplete (complaints still in progress are excluded, so only
+   quickly resolved ones count); the replay uses the archive, not a live feed.

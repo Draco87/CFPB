@@ -16,6 +16,9 @@ Fix tested: ROLLING RECALIBRATION. Module 3's percentages run too high because p
 recalibrating once (on H2 2024), refit the Platt scaling every month on the most recent 3 months whose outcomes
 are known. Outcomes arrive late in real life (a company has 15 days to respond, more to close), so month m uses
 months m-4 .. m-2 - a 1-month gap for late labels. Ranking is unchanged; only the percentages move.
+Months with a MAJOR product-mix shift (PSI > 0.25) are left out of the recalibration window by default: the first
+run showed one abnormal month (Jan 2025) pulled the next three months' percentages far too low.
+Compare with:  uv run python scripts/m7_03_monitor.py --keep-drift-months
 
 Writes reports/m7_monitoring.html and reports/m7_monitoring.csv
 """
@@ -66,6 +69,11 @@ def platt(p, y):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--keep-drift-months", dest="skip_drift_months", action="store_false",
+                    help="also recalibrate on months with a major product-mix shift (PSI > 0.25)")
+    args = ap.parse_args()
     # ------------------------------------------------ risk model replay (Module 3 data)
     tr, va, te = (pd.read_parquet(config.PROCESSED / f"m3_{s}.parquet") for s in ("train", "val", "test"))
     cats = {c: sorted(tr[c].astype(str).unique()) for c in ["product", "sub_product", "issue", "company_group",
@@ -84,12 +92,17 @@ def main():
     len_bins = np.unique(np.quantile(tr["log_length"], np.linspace(0, 1, 11)))
     len_bins[0], len_bins[-1] = -np.inf, np.inf
 
+    # product-mix drift of EVERY month (validation too), so recalibration can skip abnormal months
+    month_psi = {mm: psi(tr["product"], g["product"]) for mm, g in lab.groupby("month")}
     rows = []
     months = sorted(lab.loc[lab["month"] >= pd.Period(pd.Timestamp(lab["date"].min()), "M") + 4, "month"].unique())
     test_months = sorted(pd.to_datetime(te["date"]).dt.to_period("M").unique())
     for m in [x for x in months if x in test_months]:
         cur = lab[lab["month"] == m]
-        hist = lab[(lab["month"] >= m - 4) & (lab["month"] <= m - 2)]      # labels known by now (1-month gap)
+        window = [w for w in (m - 4, m - 3, m - 2)]                         # labels known by now (1-month gap)
+        if args.skip_drift_months:                                          # don't learn from abnormal months
+            window = [w for w in window if month_psi.get(w, 0) <= PSI_ALERT]
+        hist = lab[lab["month"].isin(window)]
         rolling = platt(hist["score"].to_numpy(), hist["y"]) if hist["y"].sum() >= MIN_POS else static
         y, s = cur["y"].to_numpy(), cur["score"].to_numpy()
         actual = y.mean()
@@ -190,7 +203,8 @@ def main():
             "<b>Predicted/actual</b>: 1.0 = the payout percentages are right on average; 1.5 = 50% too high. "
             f"Months with fewer than {MIN_POS} payouts are too noisy to judge and shown as '-'."], figs, []),
         ("Month by month", [
-            f"Recalibrating monthly (on the latest 3 months with known outcomes) kept calibration acceptable in "
+            f"Recalibrating monthly (on the latest 3 months with known outcomes"
+            f"{', skipping months with a major product-mix shift' if args.skip_drift_months else ''}) kept calibration acceptable in "
             f"<b>{n_roll}/{len(judged)}</b> months, versus <b>{n_static}/{len(judged)}</b> when recalibrated once."],
          table_html(tbl, num_cols=tuple(tbl.columns[1:])), [
              "Rule for production: alert when product-mix or risk-score PSI exceeds 0.25, or predicted/actual leaves "
