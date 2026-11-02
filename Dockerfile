@@ -1,18 +1,25 @@
+# syntax=docker/dockerfile:1
 # Complaint Intelligence API - container image (CPU only).
 # Models, the regulation index and logs are NOT baked in: they are mounted from your project folder at run time
 # (see docker-compose.yml), so the image stays small and retraining never needs a rebuild.
-FROM python:3.12-slim
+# same Python version as the laptop that trained the models
+FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    PIP_DEFAULT_TIMEOUT=300 PIP_RETRIES=10 \
     PYTHONPATH=/app/src HF_HUB_DISABLE_TELEMETRY=1
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 
-# 1. dependencies first (this layer is cached until the version files change)
+# 1. dependencies first (this layer is cached until the version files change).
+#    Slow connection? Long timeout + retries, and a download cache that survives a failed build,
+#    so a retry continues instead of downloading everything again.
 COPY docker/torch.txt docker/requirements-serve.txt docker/
-RUN pip install -r docker/torch.txt --index-url https://download.pytorch.org/whl/cpu \
- && pip install -r docker/requirements-serve.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r docker/torch.txt --index-url https://download.pytorch.org/whl/cpu
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r docker/requirements-serve.txt
 
 # 2. our code
 COPY src/ src/
