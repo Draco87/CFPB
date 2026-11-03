@@ -13,3 +13,4 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 logs/
+docs/demo_script.md

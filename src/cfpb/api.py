@@ -196,7 +196,7 @@ def analyze(req: AnalyzeRequest, c: Components = Depends(get_components)):
     out = {"triage": tri, "product_used": product, "risk": run_risk(c, req, product)}
     if req.include_draft:
         out["draft"] = run_draft(c, req, product)
-    log_request("analyze", t0, product=product, confidence=tri["confidence"],
+    log_request("analyze", t0, include_draft=req.include_draft, product=product, confidence=tri["confidence"],
                 payout_probability=out["risk"]["payout_probability"], n_chars=len(req.text),
                 warnings=out.get("draft", {}).get("guardrail_warnings"))
     return out

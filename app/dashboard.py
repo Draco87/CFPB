@@ -214,14 +214,22 @@ with tab3:
         st.info("No requests logged yet - analyse a complaint first.")
     else:
         st.caption("From logs/requests.jsonl. The log stores labels and numbers only - never complaint text.")
-        c1, c2, c3 = st.columns(3)
+        # a request "drafted" if it is /draft, or /analyze with a draft (warnings is a list, even an empty one)
+        w = log["warnings"] if "warnings" in log else pd.Series([None] * len(log))
+        drafted = (log["endpoint"] == "draft") | w.map(lambda v: isinstance(v, list))
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Requests", len(log))
-        c2.metric("Median latency, risk/triage", f"{log[log['endpoint'] != 'draft']['latency_ms'].median():.0f} ms")
-        flagged = log["warnings"].dropna().map(bool).sum() if "warnings" in log else 0
-        c3.metric("Drafts with warnings", int(flagged))
-        st.bar_chart(log["endpoint"].value_counts())
+        fast = log.loc[~drafted, "latency_ms"]
+        c2.metric("Median latency, no draft", f"{fast.median():.0f} ms" if len(fast) else "-")
+        slow = log.loc[drafted, "latency_ms"]
+        c3.metric("Median latency, with draft", f"{slow.median() / 1000:.0f} s" if len(slow) else "-")
+        c4.metric("Drafts with warnings", f"{int(w[drafted].map(lambda v: bool(v)).sum())}/{int(drafted.sum())}")
+        a, b = st.columns(2)
+        a.caption("Requests by endpoint")
+        a.bar_chart(log["endpoint"].value_counts(), height=220)
         if "product" in log:
-            st.bar_chart(log["product"].value_counts())
+            b.caption("Requests by product")
+            b.bar_chart(log["product"].value_counts(), height=220)
         st.dataframe(log.tail(20).iloc[::-1], hide_index=True)
 
 # ================================================================== 4. model cards

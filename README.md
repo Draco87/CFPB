@@ -397,3 +397,31 @@ ROC-AUC 0.98 -> 0.90). Feb-Dec 2025 stable (PSI < 0.1, ROC-AUC ~0.98, triage mac
    model learned patterns of missingness - callers should send sub-product and issue when known.
 5. **Caveats:** outcomes of the latest months are incomplete (complaints still in progress are excluded, so only
    quickly resolved ones count); the replay uses the archive, not a live feed.
+
+## Module 8 - Demo dashboard
+
+A Streamlit front end for the API: paste a complaint and see the team it belongs to, the payout risk with its
+reasons, and a regulation-cited draft with guardrail warnings. The dashboard does no modelling itself - it calls the
+API, as a customer-care tool would.
+
+```bash
+uv run uvicorn cfpb.api:app                 # terminal 1 (or: docker compose up)
+uv run streamlit run app/dashboard.py       # terminal 2 -> http://localhost:8501
+```
+
+| Tab | Shows |
+|---|---|
+| Analyse a complaint | 5 built-in examples (incl. a prompt-injection attack) or your own text: product + confidence, payout probability vs the average with top 3 SHAP reasons, draft + warnings + rules retrieved |
+| Monitoring | Module 7 replay: drift (PSI), payout percentages before/after recalibration, accuracy over time, alert months |
+| Live usage | from the request log (labels and numbers only): request counts, latency with/without a draft, drafts with warnings |
+| Model cards | `docs/model_cards.md` |
+
+
+### Findings
+1. **A green light is not a correct answer.** In the first demo run, a draft passed every check yet stated a wrong
+   deadline ("respond within 60 days", the consumer's reporting window, instead of the 10-business-day
+   investigation), cited a section from memory ("§ 1005.11", not retrieved), and claimed a statement had already been
+   sent. Retrieval had missed the error-resolution rule for that wording. The citation check now also catches section
+   numbers in running text (the re-run was flagged), and the screen says "no automatic warnings - an agent must
+   still check" instead of a green tick.
+2. **Inputs matter:** the same complaint scores 13.2% without a sub-product and 7.3% with "Checking account".
