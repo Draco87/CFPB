@@ -17,6 +17,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "fastapi>=0.162.0",
     "uvicorn[standard]>=0.54.0",
+    "streamlit>=1.66.1",
 ]
 
 [dependency-groups]
