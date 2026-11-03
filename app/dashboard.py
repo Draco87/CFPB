@@ -160,7 +160,9 @@ with tab1:
                 if dr["needs_careful_review"]:
                     st.error("Needs careful review before use")
                 else:
-                    st.success("No guardrail warnings")
+                    st.info("No automatic warnings. The checks catch specific mistakes (invented deadlines, promises, "
+                            "unretrieved rules), not every error - an agent must still check the draft against the "
+                            "cited rules.")
                 if dr["input_flags"]["injection"]:
                     st.warning("The complaint contains text that tries to instruct the AI: "
                                + ", ".join(f"'{x}'" for x in dr["input_flags"]["injection"]))

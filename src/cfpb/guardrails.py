@@ -117,6 +117,15 @@ def check_input(complaint):
     return {"injection": inj, "pii": pii}
 
 
+SECTION_REF = re.compile(r"§+\s*(10(?:05|06|22|24|26|30)\.\d+[a-z]?)")   # "§ 1005.11" written outside brackets
+
+
+def unretrieved_sections(reply, retrieved_bases):
+    """Section numbers mentioned in running text ('as per § 1005.11') that were NOT retrieved.
+    The bracket citation check misses these, and a model citing from memory is exactly the risk."""
+    return sorted({f"12 CFR {m}" for m in SECTION_REF.findall(reply)} - set(retrieved_bases))
+
+
 def check_output(draft, passages, complaint=""):
     """passages: DataFrame with 'citation' and 'text' (as returned by Retriever.search) or a list of dicts."""
     if hasattr(passages, "to_dict"):
@@ -135,8 +144,10 @@ def check_output(draft, passages, complaint=""):
     allowed = _numbers(ptext) | _numbers(complaint)
     other = sorted((_numbers(reply) - deadline_nums) - allowed, key=lambda x: float(x))
     ungrounded = fake_deadlines + other
+    from cfpb.rag import base_citation
+    loose = unretrieved_sections(reply, {base_citation(p["citation"]) for p in plist})
     res = {
-        "invalid_citations": cite["invalid"],
+        "invalid_citations": cite["invalid"] + [c for c in loose if c not in cite["invalid"]],
         "ungrounded_numbers": ungrounded,
         "promises": find_promises(reply),
         "admissions": sorted({m.group(0) for m in ADMISSION.finditer(reply)}),
