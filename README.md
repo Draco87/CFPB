@@ -425,3 +425,42 @@ uv run streamlit run app/dashboard.py       # terminal 2 -> http://localhost:850
    numbers in running text (the re-run was flagged), and the screen says "no automatic warnings - an agent must
    still check" instead of a green tick.
 2. **Inputs matter:** the same complaint scores 13.2% without a sub-product and 7.3% with "Checking account".
+
+## MCP server - the system as tools for AI agents
+
+The FastAPI service is also exposed through the **Model Context Protocol (MCP)**, so an AI agent (Claude Desktop, an
+IDE assistant, an agent framework) can discover and call the models itself. The MCP server is a thin layer over the
+API - every tool calls the API, so PII masking, guardrails and request logging still apply.
+
+```
+AI agent  --MCP (stdio)-->  src/cfpb/mcp_server.py  --HTTP-->  FastAPI service  -->  models
+```
+
+| Kind | Name | What the agent gets |
+|---|---|---|
+| tool | `check_system_health` | which parts are ready |
+| tool | `triage_complaint` | product + confidence + alternatives |
+| tool | `score_payout_risk` | payout probability, risk band, top 3 SHAP reasons |
+| tool | `draft_reply` | regulation-cited draft + guardrail warnings |
+| tool | `get_drift_report` | monitoring results: drift alerts, accuracy, calibration |
+| resource | `cfpb://model-cards` | what each model is for, not for, and its limits |
+
+```bash
+uv run uvicorn cfpb.api:app                  # terminal 1
+uv run python scripts/m8_mcp_demo.py         # terminal 2: acts as an agent (add --draft for a reply)
+uv run pytest -q                             # 20 tests, 6 of them for the MCP server
+```
+
+Claude Desktop config (`claude_desktop_config.json`):
+```json
+{"mcpServers": {"cfpb": {"command": "uv",
+  "args": ["--directory", "D:\\phd\\2026\\CFPB", "run", "python", "-m", "cfpb.mcp_server"]}}}
+```
+
+**Design notes**
+- **Tool descriptions carry the rules.** They tell the agent that drafts are for a human, that warnings must be
+  shown, and that the risk score must never be used to deprioritise anyone - in MCP, descriptions are how an agent
+  is guided.
+- **Errors an agent can act on.** Bad input ("Unknown product 'Savings'. Use one of: ...") and API failures come back
+  as readable messages, not crashes. The first test run showed a slow first call (models loading) reported as "API
+  not reachable"; slow and down are now reported separately, with a test.

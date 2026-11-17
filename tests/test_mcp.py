@@ -89,3 +89,11 @@ def test_bad_input_is_a_clear_error_not_a_crash(api):
 def test_api_failure_is_explained(api):
     res = run(_session(lambda c: c.call_tool("draft_reply", {"text": TEXT})))
     assert res.is_error and "Ollama is not running" in res.content[0].text
+
+
+def test_slow_api_is_reported_as_slow_not_as_down(monkeypatch):
+    def post(url, json=None, timeout=None):
+        raise requests.Timeout()
+    monkeypatch.setattr(requests, "post", post)
+    res = run(_session(lambda c: c.call_tool("triage_complaint", {"text": TEXT})))
+    assert res.is_error and "did not answer" in res.content[0].text and "not reachable" not in res.content[0].text

@@ -49,14 +49,20 @@ class APIError(ToolError):
     """An expected failure: the agent receives this message (other exceptions show only a generic error)."""
 
 
-def _call(endpoint, payload=None, timeout=15):
-    """Call the FastAPI service; turn connection problems and API errors into clear messages for the agent."""
+def _call(endpoint, payload=None, timeout=120):
+    """Call the FastAPI service; turn connection problems and API errors into clear messages for the agent.
+    The generous default timeout covers the first call, when the API loads its models (can take a minute)."""
     try:
         r = (requests.post(f"{API}{endpoint}", json=payload, timeout=timeout) if payload is not None
              else requests.get(f"{API}{endpoint}", timeout=timeout))
-    except requests.RequestException:
+    except requests.Timeout:
+        raise APIError(f"The API at {API} did not answer {endpoint} within {timeout} s. The first call after the "
+                       "API starts loads its models and can be slow - try once more.")
+    except requests.ConnectionError:
         raise APIError(f"The Complaint Intelligence API is not reachable at {API}. "
                        "Start it with: uv run uvicorn cfpb.api:app")
+    except requests.RequestException as e:
+        raise APIError(f"Request to {endpoint} failed: {e}")
     if r.status_code != 200:
         try:
             detail = r.json().get("detail")
